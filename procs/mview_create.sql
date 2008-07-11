@@ -21,22 +21,21 @@ DELIMITER ;;
 DROP PROCEDURE IF EXISTS flexviews.create;;
 
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`create`(
-  IN v_mview_name TEXT,
   IN v_mview_schema TEXT,
-  IN v_mview_refresh_type TEXT,
-  IN v_mview_refresh_period INT
+  IN v_mview_name TEXT,
+  IN v_mview_refresh_type TEXT
 )
 BEGIN
   INSERT INTO flexviews.mview
   (  mview_name,
      mview_schema, 
-     mview_refresh_type,
-     mview_refresh_period )
+     mview_refresh_type
+  )
   VALUES
   (  v_mview_name,
      v_mview_schema,
-     v_mview_refresh_type,
-     v_mview_refresh_period );
+     v_mview_refresh_type
+  );
 
 END ;;
 

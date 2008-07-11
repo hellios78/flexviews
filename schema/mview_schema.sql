@@ -29,7 +29,7 @@ CREATE TABLE `mview` (
   `mview_refresh_period` int(11) default '86400',
   `mview_refresh_type` enum('INCREMENTAL','COMPLETE') default NULL,
   `mview_engine` enum('MyISAM','InnoDB') default 'InnoDB',
-  `mview_definition` text,
+  `mview_definition` varchar(32000),
   `incremental_hwm` bigint(20) default NULL,
   `refreshed_to_uow_id` bigint(20) default NULL,
   PRIMARY KEY  (`mview_id`),
@@ -45,7 +45,7 @@ CREATE TABLE `mview_expression` (
   `mview_expression_id` int(11) NOT NULL auto_increment,
   `mview_id` int(11) default NULL,
   `mview_expr_type` enum('GROUP','SUM','AVG','COUNT','MIN','MAX','WHERE','PRIMARY','KEY','COLUMN') default NULL,
-  `mview_expression` text,
+  `mview_expression` varchar(1000),
   `mview_alias` varchar(100) default NULL,
   `mview_expr_order` int(11) default '999',
   PRIMARY KEY  (`mview_expression_id`),
@@ -75,7 +75,7 @@ CREATE TABLE `mview_table` (
   `mview_table_name` varchar(100) default NULL,
   `mview_table_schema` varchar(100) default NULL,
   `mview_table_alias` varchar(100) default NULL,
-  `mview_join_condition` text,
+  `mview_join_condition` varchar(1000),
   `mview_join_order` int(11) default '999',
   PRIMARY KEY  (`mview_table_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=latin1;

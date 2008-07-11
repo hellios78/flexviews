@@ -20,10 +20,10 @@ DELIMITER ;;
 
 DROP PROCEDURE IF EXISTS `rename`;;
 
-/*!50003 CREATE*/ /*!50020 DEFINER=`flexviews`@`localhost`*/ /*!50003 PROCEDURE `rename`(
+CREATE DEFINER=`flexviews`@`localhost` PROCEDURE `rename`(
   IN v_mview_id INT,
-  IN v_mview_name_new TEXT, 
-  IN v_mview_schema_new TEXT
+  IN v_mview_schema_new TEXT,
+  IN v_mview_name_new TEXT 
 )
 BEGIN
   DECLARE v_mview_enabled tinyint(1);
@@ -66,6 +66,6 @@ BEGIN
       SET mview_name = v_mview_name_new,
           mview_schema = v_mview_schema_new
     WHERE mview_id = v_mview_id;
-END */;;
+END ;;
 
 DELIMITER ;

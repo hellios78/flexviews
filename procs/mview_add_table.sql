@@ -17,22 +17,31 @@ DELIMITER ;;
     the GPL (the LGPL) in COPYING.LESSER.
     If not, see <http://www.gnu.org/licenses/>.
 */
-DROP PROCEDURE IF EXISTS mview_add_table;
+DROP PROCEDURE IF EXISTS flexviews.`add_table` ;;
 
-/*!50003 DROP PROCEDURE IF EXISTS `add_table` */;;
-
-/*!50003 CREATE*/ /*!50020 DEFINER=`flexviews`@`localhost`*/ /*!50003 PROCEDURE `add_table`(
+CREATE DEFINER=`flexviews`@`localhost` PROCEDURE `flexviews`.`add_table`(
   IN v_mview_id INT,
-  IN v_mview_table_name TEXT,
-  IN v_mview_table_schema TEXT, 
+  IN v_mview_table_schema TEXT,
+  IN v_mview_table_name TEXT, 
   IN v_mview_table_alias TEXT,
   IN v_mview_join_condition TEXT
 )
 BEGIN
-
+  DECLARE v_exists boolean default false;
   IF flexviews.is_enabled(v_mview_id) = 1 THEN
     CALL flexviews.signal('MAY_NOT_MODIFY_ENABLED_MVIEW');
   END IF;
+
+  SELECT true
+    INTO v_exists
+    FROM information_schema.columns
+   WHERE table_name = v_table_name
+     AND table_schema = v_table_schema
+   LIMIT 1;
+
+  if v_exists != true then
+    call flexviews.signal('NO_SUCH_TABLE'); 
+  end if;
 
   INSERT INTO flexviews.mview_table
   (  mview_id,
@@ -47,6 +56,6 @@ BEGIN
      v_mview_table_alias, 
      v_mview_join_condition );
 
-END */;;
+END ;;
 
 DELIMITER ;

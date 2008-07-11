@@ -18,9 +18,9 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*!50003 DROP FUNCTION IF EXISTS `mview_get_keys` */;;
+DROP FUNCTION IF EXISTS `mview_get_keys` ;;
 
-/*!50003 CREATE*/ /*!50020 DEFINER=`flexviews`@`localhost`*/ /*!50003 FUNCTION `mview_get_keys`(v_mview_id INT) RETURNS TEXT CHARSET latin1
+CREATE DEFINER=`flexviews`@`localhost` FUNCTION `mview_get_keys`(v_mview_id INT) RETURNS TEXT CHARSET latin1
 READS SQL DATA
 BEGIN
   DECLARE v_done boolean DEFAULT FALSE;
@@ -127,6 +127,6 @@ BEGIN
   END LOOP;
 
   RETURN v_key_list;
-END */;;
+END ;;
 
 DELIMITER ;

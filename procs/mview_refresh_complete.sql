@@ -18,9 +18,9 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*!50003 DROP PROCEDURE IF EXISTS `mview_refresh_complete` */;;
+DROP PROCEDURE IF EXISTS `mview_refresh_complete`;;
 
-/*!50003 CREATE*/ /*!50020 DEFINER=`flexviews`@`localhost`*/ /*!50003 PROCEDURE `mview_refresh_complete`(
+CREATE DEFINER=`flexviews`@`localhost` PROCEDURE `mview_refresh_complete`(
   IN v_mview_id INT
 )
 BEGIN
@@ -88,6 +88,6 @@ SELECT mview_name,
  EXECUTE drop_stmt;
  DEALLOCATE PREPARE drop_stmt;
 
-END */;;
+END ;;
 
 DELIMITER ;
