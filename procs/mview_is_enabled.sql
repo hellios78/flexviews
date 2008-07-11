@@ -24,7 +24,7 @@ CREATE DEFINER=flexviews@localhost FUNCTION flexviews.is_enabled(v_mview_id INT)
 RETURNS BOOLEAN
 READS SQL DATA
 BEGIN
-  DECLARE v_return BOOLEAN DEFAULT FALSE;
+  DECLARE v_return BOOLEAN DEFAULT NULL;
 
   SELECT mview_enabled
     INTO v_return
