@@ -18,9 +18,9 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-DROP PROCEDURE IF EXISTS disable;;
+DROP PROCEDURE IF EXISTS flexviews.disable;;
 
-/*!50003 CREATE*/ /*!50020 DEFINER=`flexviews`@`localhost`*/ /*!50003 PROCEDURE `disable`(
+CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`disable`(
   IN v_mview_id INT
 )
 BEGIN
@@ -72,6 +72,6 @@ BEGIN
       SET mview_last_refresh = NULL,
           mview_enabled = FALSE
     WHERE mview_id = v_mview_id;
-END */;;
+END ;;
 
 DELIMITER ;

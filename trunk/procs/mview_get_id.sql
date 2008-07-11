@@ -22,8 +22,8 @@ DROP FUNCTION IF EXISTS mview_get_id;;
 DROP FUNCTION IF EXISTS get_id;;
 
 CREATE DEFINER=flexviews@localhost FUNCTION get_id (
-  v_mview_name TEXT,
-  v_mview_schema TEXT
+  v_mview_schema TEXT,
+  v_mview_name TEXT
 )
 RETURNS INT
 READS SQL DATA

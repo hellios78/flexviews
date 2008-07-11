@@ -18,10 +18,9 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-DROP PROCEDURE IF EXISTS mview_get_trigger_body;;
 DROP PROCEDURE IF EXISTS flexviews.get_trigger_body;;
 
-/*!50003 CREATE*/ /*!50020 DEFINER=`flexviews`@`localhost`*/ /*!50003 PROCEDURE flexviews.`get_trigger_body`(
+CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`get_trigger_body`(
   IN v_table_name VARCHAR(50),
   IN v_schema_name VARCHAR(50),
   IN v_dml_type TINYINT(4),
@@ -65,6 +64,6 @@ BEGIN
       SET v_return = CONCAT(v_return, v_column_name);
     END LOOP;
     SET v_return = CONCAT(v_return, ')', v_delim);
-END */;;
+END ;;
 
 DELIMITER ;

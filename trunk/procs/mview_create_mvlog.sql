@@ -18,8 +18,8 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*!50003 DROP PROCEDURE IF EXISTS flexviews.`create_mvlog` */;;
-/*!50003 CREATE*/ /*!50020 DEFINER=`flexviews`@`localhost`*/ /*!50003 PROCEDURE flexviews.`create_mvlog`(
+DROP PROCEDURE IF EXISTS flexviews.`create_mvlog` ;;
+CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`create_mvlog`(
    IN v_table_name VARCHAR(50), 
    IN v_schema_name VARCHAR(100)
 )
@@ -110,6 +110,6 @@ BEGIN
                 '\n You may either change the triggers to *BEFORE* triggers\n or you can merge your trigger bodies with these trigger bodies.\n',
                 '\n Copy everything between (and including) DELIMITER ;; to DELIMITER ; and modify as necessary.\n ***/\n', @OUTPUT);
   SELECT @OUTPUT;
-END */;;
+END ;;
 
 DELIMITER ;

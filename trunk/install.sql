@@ -16,6 +16,9 @@
     the GPL (the LGPL) in COPYING.LESSER.
     If not, see <http://www.gnu.org/licenses/>.
 */
+
+SET SQL_MODE = STRICT_TRANS_TABLES;
+
 CREATE DATABASE IF NOT EXISTS flexviews;
 CREATE USER flexviews@localhost identified by 'CHANGEME';
 

@@ -18,10 +18,9 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*!50003 DROP PROCEDURE IF EXISTS mview_add_expr */;;
-/*!50003 DROP PROCEDURE IF EXISTS flexviews.`add_expr` */;;
+DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
 
-/*!50003 CREATE*/ /*!50020 DEFINER=`flexviews`@`localhost`*/ /*!50003 PROCEDURE flexviews.`add_expr`(
+CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`add_expr`(
   IN v_mview_id INT,
   IN v_mview_expr_type varchar(50),
   IN v_mview_expression TEXT,
@@ -51,6 +50,6 @@ BEGIN
        v_mview_alias,
        v_mview_expr_order );
 
-END */;;
+END ;;
 
 DELIMITER ;
