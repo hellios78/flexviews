@@ -1,0 +1,8 @@
+Patch for MySQL 5.0.51a that adds
+  GET_COMMITS()
+  GET_ROLLBACKS()
+
+These are not required on 5.1, as the variables are available in the
+INFORMATION_SCHEMA 
+
+If you want to use these, compile them in, then update procs/mview_uow.sql (search for GET_COMMITS and follow the directions).

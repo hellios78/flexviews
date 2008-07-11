@@ -1,0 +1,5 @@
+You can use this PHP daemon to rebuild your views periodically if you are using MySQL 5.0
+
+You'll need the mysqli and pcntl extensions enabled 
+
+If you are using MySQL 5.1, use the EVENT SCHEDULER to refresh your views
