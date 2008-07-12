@@ -681,13 +681,7 @@ fromLoop: LOOP
     SET v_list = CONCAT(v_list, ',');
   END IF;
 
-  -- IF flexviews.has_aggregates(v_mview_id) THEN
-    -- if the view has aggregates, we need to get the MIN(uow_id) from each set of tuples
-    -- SET v_list = CONCAT(v_list,'MIN(', v_mview_table_alias, '.uow_id)');
-    SET v_list = CONCAT(v_list, v_mview_table_alias, '.uow_id');
-  -- ELSE
-  --  SET v_list = CONCAT(v_list, v_mview_table_alias, '.uow_id');
-  -- END IF;
+  SET v_list = CONCAT(v_list, v_mview_table_alias, '.uow_id');
   SET v_delta_cnt = v_delta_cnt + 1;
 
 END LOOP;
