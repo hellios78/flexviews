@@ -48,7 +48,6 @@ USE flexviews;
 \. ./procs/add_table.sql
 \. ./procs/create_mvlog.sql
 \. ./procs/create.sql
-\. ./procs/commit_funcs.sql
 \. ./procs/delta.sql
 \. ./procs/disable.sql
 \. ./procs/enable.sql
