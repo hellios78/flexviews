@@ -42,34 +42,33 @@ GRANT SELECT
 
 USE flexviews;
 
-\. schema/mview_schema.sql
+\. schema/schema.sql
 
-\. ./procs/mview_add_expr.sql
-\. ./procs/mview_add_table.sql
-\. ./procs/mview_create_mvlog.sql
-\. ./procs/mview_create.sql
-\. ./procs/mview_commit_funcs.sql
-\. ./procs/mview_delta.sql
-\. ./procs/mview_disable.sql
-\. ./procs/mview_enable.sql
-\. ./procs/mview_get_from_clause.sql
-\. ./procs/mview_get_grouping_list.sql
-\. ./procs/mview_get_id.sql
-\. ./procs/mview_get_keys.sql
-\. ./procs/mview_get_select_list.sql
-\. ./procs/mview_get_trigger_body.sql
-\. ./procs/mview_get_where.sql
-\. ./procs/mview_is_enabled.sql
-\. ./procs/mview_mvlog_autoclean.sql
-\. ./procs/mview_refresh_complete.sql
-\. ./procs/mview_refresh.sql
-\. ./procs/mview_remove_expr.sql
-\. ./procs/mview_remove_table.sql
-\. ./procs/mview_rename.sql
-\. ./procs/mview_set_definition.sql
-\. ./procs/mview_signal.sql
-\. ./procs/mview_uow.sql
+\. ./procs/add_expr.sql
+\. ./procs/add_table.sql
+\. ./procs/create_mvlog.sql
+\. ./procs/create.sql
+\. ./procs/commit_funcs.sql
+\. ./procs/delta.sql
+\. ./procs/disable.sql
+\. ./procs/enable.sql
+\. ./procs/get_from_clause.sql
+\. ./procs/get_grouping_list.sql
+\. ./procs/get_id.sql
+\. ./procs/get_keys.sql
+\. ./procs/get_select_list.sql
+\. ./procs/get_trigger_body.sql
+\. ./procs/get_where.sql
+\. ./procs/is_enabled.sql
+\. ./procs/mvlog_autoclean.sql
+\. ./procs/refresh_complete.sql
+\. ./procs/refresh.sql
+\. ./procs/remove_expr.sql
+\. ./procs/remove_table.sql
+\. ./procs/rename.sql
+\. ./procs/set_definition.sql
+\. ./procs/signal.sql
+\. ./procs/uow.sql
 
 CALL flexviews.uow_start(@uow_id);
-CALL flexviews.uow_end(@uow_id);
 set @uow_id = NULL;
