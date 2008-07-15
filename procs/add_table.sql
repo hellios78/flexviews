@@ -35,8 +35,8 @@ BEGIN
   SELECT true
     INTO v_exists
     FROM information_schema.columns
-   WHERE table_name = v_table_name
-     AND table_schema = v_table_schema
+   WHERE table_name = v_mview_table_name
+     AND table_schema = v_mview_table_schema
    LIMIT 1;
 
   if v_exists != true then

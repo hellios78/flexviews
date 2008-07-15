@@ -100,7 +100,7 @@ IF v_got_lock = 1 THEN
    END IF;
 
  ELSE
-   CALL flexviews.signal('UNSUPPORTED REFRESH METHOD'); 
+   CALL flexviews.signal(' XYZ UNSUPPORTED REFRESH METHOD'); 
  END IF;
 ELSE
  IF v_got_lock = 1 THEN

@@ -85,6 +85,7 @@ BEGIN
      SET @v_sql = v_sql;
    ELSE
      CALL flexviews.ensure_validity(v_mview_id);
+     SET @HERE=1;
    -- SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '(', char(10));
 
 

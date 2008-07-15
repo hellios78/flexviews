@@ -33,7 +33,7 @@ BEGIN
 
   DECLARE v_mview_expr_order INT;
   DECLARE CONTINUE HANDLER FOR SQLSTATE '01000' SET v_error = true;
-  SELECT mview_enabled,
+  SELECT IFNULL(mview_enabled,false),
          mview_refresh_type
     INTO v_mview_enabled,
          v_mview_refresh_type
