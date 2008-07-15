@@ -67,13 +67,13 @@ SELECT mview_name,
  PREPARE create_stmt FROM @v_sql;
  EXECUTE create_stmt;
  DEALLOCATE PREPARE create_stmt;
-
+/*
  SET v_sql = CONCAT('ANALYZE TABLE ', v_mview_schema, '.', v_mview_name,'_new');
  SET @v_sql = v_sql;
  PREPARE analyze_stmt  FROM @v_sql;
  EXECUTE analyze_stmt;
  DEALLOCATE PREPARE analyze_stmt;
-
+*/
  SET v_sql = CONCAT('RENAME TABLE ', v_mview_schema, '.', v_mview_name, ' to ', v_mview_schema, '.', v_mview_name, '_old,',
                     v_mview_schema, '.', v_mview_name, '_new to ', v_mview_schema, '.', v_mview_name);
 
