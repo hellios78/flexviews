@@ -43,6 +43,19 @@ BEGIN
     call flexviews.signal('NO_SUCH_TABLE'); 
   end if;
 
+  SET v_exists = false;
+
+  SELECT true
+    INTO v_exists
+    FROM information_schema.columns
+   WHERE table_name = CONCAT(v_mview_table_name, '_mvlog')
+     AND table_schema = v_mview_table_schema
+   LIMIT 1;
+
+  if v_exists != true then
+    call flexviews.signal('TABLE_MUST_HAVE_MVLOG'); 
+  end if;
+
   INSERT INTO flexviews.mview_table
   (  mview_id,
      mview_table_name,
