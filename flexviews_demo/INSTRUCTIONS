@@ -1,0 +1,44 @@
+Step 1
+Import the demo.sql file to get the 'demo' database with
+a few sample tables.  This data is based on the Microsoft
+'Northwind' database.
+
+Step 2
+Run the following four commands inside the 'demo' database
+ and follow the instructions on the screen.  
+Basically you just have to copy the output between (and including)
+the DELIMITER statements for each table.  This creates the 
+triggers and materialized view logs.
+
+call flexviews.create_mvlog('orders', 'demo');
+call flexviews.create_mvlog('customers', 'demo');
+call flexviews.create_mvlog('order_details', 'demo');
+call flexviews.create_mvlog('products', 'demo');
+
+Step 3
+run create.sql file to create the actual materialized views
+
+Step 4
+select some sample data from a materialized view
+
+SELECT * from demo.mv_company_sales_total
+WHERE CustomerName like 'Ranch%';
+
+Step 5
+change some data, for instance:
+update demo.order_details set CustomerId = 'XXX' 
+where customer_id = 'RANCH';
+
+Step 6
+refresh the materialized view:
+CALL flexviews.refresh(flexviews.get_id('mv_company_sales_total', 'demo'), 'BOTH');
+
+Step 7
+verify the data was removed from the view
+
+SELECT * from demo.mv_company_sales_total
+WHERE CustomerName like 'Ranch%';
+
+Step 8
+Play!
+
