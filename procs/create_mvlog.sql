@@ -20,8 +20,8 @@ DELIMITER ;;
 
 DROP PROCEDURE IF EXISTS flexviews.`create_mvlog` ;;
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`create_mvlog`(
-   IN v_table_name VARCHAR(50), 
-   IN v_schema_name VARCHAR(100)
+   IN v_schema_name VARCHAR(100),
+   IN v_table_name VARCHAR(50) 
 )
 BEGIN
   DECLARE v_done BOOLEAN DEFAULT FALSE;
