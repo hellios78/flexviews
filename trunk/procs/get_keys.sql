@@ -18,9 +18,9 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-DROP FUNCTION IF EXISTS `mview_get_keys` ;;
+DROP FUNCTION IF EXISTS flexviews.`get_keys` ;;
 
-CREATE DEFINER=`flexviews`@`localhost` FUNCTION `mview_get_keys`(v_mview_id INT) RETURNS TEXT CHARSET latin1
+CREATE DEFINER=`flexviews`@`localhost` FUNCTION flexviews.`get_keys`(v_mview_id INT) RETURNS TEXT CHARSET latin1
 READS SQL DATA
 BEGIN
   DECLARE v_done boolean DEFAULT FALSE;

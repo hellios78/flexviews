@@ -18,9 +18,9 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-DROP FUNCTION IF EXISTS `mview_get_from_clause` ;;
+DROP FUNCTION IF EXISTS flexviews.get_from ;;
 
-CREATE DEFINER=`flexviews`@`localhost`FUNCTION `mview_get_from_clause`(
+CREATE DEFINER=`flexviews`@`localhost`FUNCTION flexviews.`get_from`(
   v_mview_id INT,
   v_join_type TEXT,
   v_table_suffix TEXT

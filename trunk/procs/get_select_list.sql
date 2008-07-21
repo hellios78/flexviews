@@ -18,9 +18,9 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-DROP FUNCTION IF EXISTS `mview_get_select_list`;;
+DROP FUNCTION IF EXISTS flexviews.`get_select`;;
 
-CREATE DEFINER=flexviews@localhost FUNCTION `mview_get_select_list`(  v_mview_id INT, v_mode varchar(10), v_prefix varchar(50)) RETURNS TEXT CHARSET latin1
+CREATE DEFINER=flexviews@localhost FUNCTION flexviews.`get_select`(  v_mview_id INT, v_mode varchar(10), v_prefix varchar(50)) RETURNS TEXT CHARSET latin1
     READS SQL DATA
 BEGIN  
 DECLARE v_done boolean DEFAULT FALSE;  
