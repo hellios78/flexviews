@@ -18,7 +18,7 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-DROP PROCEDURE IF EXISTS refresh ;;
+DROP PROCEDURE IF EXISTS flexviews.refresh ;;
 
 CREATE DEFINER=flexviews@localhost PROCEDURE flexviews.refresh(
   IN v_mview_id INT,
@@ -36,6 +36,11 @@ DECLARE v_incremental_hwm BIGINT;
 DECLARE v_refreshed_to_uow_id BIGINT;
 DECLARE v_current_uow_id BIGINT;
 SET v_mode = UPPER(v_mode);
+
+IF NOT flexviews.is_enabled(v_mview_id) = 1 THEN
+    CALL flexviews.signal('MV_NOT_ENABLED');
+END IF;
+
 
 IF v_mode != 'COMPLETE' AND v_mode != 'FULL' AND v_mode != "BOTH" and v_mode != "COMPUTE" and v_mode != "APPLY" THEN
   call flexviews.signal('INVALID_REFRESH_MODE');
