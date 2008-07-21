@@ -74,7 +74,7 @@ BEGIN
    -- note: special refresh REQUIRES a PRIMARY KEY definition and an error will be raised if one has
    -- not been provided
 
-   SET v_keys = mview_get_keys(v_mview_id);
+   SET v_keys = flexviews.get_keys(v_mview_id);
 
    IF v_keys != "" THEN
      SET v_sql = CONCAT(v_sql, '(', v_keys,')\n');
@@ -85,26 +85,17 @@ BEGIN
      SET @v_sql = v_sql;
    ELSE
      CALL flexviews.ensure_validity(v_mview_id);
-     SET @HERE=1;
-   -- SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '(', char(10));
 
+     SET v_sql = CONCAT(v_sql, 'ENGINE=INNODB ');
+     SET v_sql = CONCAT(v_sql, 'AS (', char(10));
+     SET v_sql = CONCAT(v_sql, flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
+     SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
 
-   -- SET v_sql = CONCAT(v_sql, mview_get_keys(v_mview_id) ,')', char(10));
+     SET v_sql = CONCAT(v_sql, flexviews.get_where(v_mview_id), char(10));
 
-   SET v_sql = CONCAT(v_sql, 'ENGINE=INNODB ');
-   SET v_sql = CONCAT(v_sql, 'AS (', char(10));
-   SET v_sql = CONCAT(v_sql, mview_get_select_list(v_mview_id, 'CREATE',''), char(10));
-   SET v_sql = CONCAT(v_sql, mview_get_from_clause(v_mview_id, 'JOIN', ''));
-
-   -- TODO: add mview_get_where_clause and use it here
-   -- IF v_mview_filter IS NOT NULL THEN
-   --  SET v_sql = CONCAT(v_sql, v_mview_get_where_clause(v_mview_id), char(10));
-   -- END IF;
-
-   SET v_sql = CONCAT(v_sql, IF(flexviews.has_aggregates(v_mview_id) = true, ' GROUP BY ', ''), flexviews.get_delta_groupby(v_mview_id), char(10)); 
-   SET v_sql = CONCAT(v_sql, ');');
-   -- SET @v_sql = mview_tokenizer(v_mview_id, v_sql);
-   SET @v_sql = v_sql;
+     SET v_sql = CONCAT(v_sql, IF(flexviews.has_aggregates(v_mview_id) = true, ' GROUP BY ', ''), flexviews.get_delta_groupby(v_mview_id), char(10)); 
+     SET v_sql = CONCAT(v_sql, ');');
+     SET @v_sql = v_sql;
 END IF;
    PREPARE create_stmt FROM @v_sql;
    SET @tstamp = NOW(); 

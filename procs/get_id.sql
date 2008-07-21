@@ -18,10 +18,9 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-DROP FUNCTION IF EXISTS mview_get_id;;
-DROP FUNCTION IF EXISTS get_id;;
+DROP FUNCTION IF EXISTS flexviews.get_id;;
 
-CREATE DEFINER=flexviews@localhost FUNCTION get_id (
+CREATE DEFINER=flexviews@localhost FUNCTION flexviews.get_id (
   v_mview_schema TEXT,
   v_mview_name TEXT
 )

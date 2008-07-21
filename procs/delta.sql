@@ -1006,8 +1006,7 @@ DECLARE v_sql TEXT;
 DECLARE v_error BOOLEAN DEFAULT FALSE;
 
 -- this 'loop' gives us an easy way to only do the necessary checks
--- I couldn't resist the name of the loop.  Leave atOnce is just too cool :D
-atOnce:LOOP
+theLoop:LOOP
 
 SELECT mview_id,
        mview_enabled,
@@ -1027,7 +1026,7 @@ END IF;
 /*
 IF v_mview_enabled = TRUE THEN
   -- already been validated since it is enabled
-  -- LEAVE atOnce;
+  -- LEAVE theLoop;
   set @noop=0;
 END IF;
 */
@@ -1107,9 +1106,10 @@ END IF;
 SET v_error=0;
 
 -- put together the SELECT statement to make sure it works
-SET v_sql = CONCAT(mview_get_select_list(v_mview_id, 'CREATE',''), char(10));
-SET v_sql = CONCAT(v_sql, mview_get_from_clause(v_mview_id, 'JOIN', ''));
--- TODO: add mview_get_where_clause and use it here to make sure the where clauses are formatted properly
+SET v_sql = CONCAT(flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
+SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
+SET v_sql = CONCAT(v_sql, flexviews.get_where(v_mview_id));
+
 SET v_sql = CONCAT(v_sql, ' WHERE 0=1 ');
 SET v_sql = CONCAT(v_sql, IF(flexviews.has_aggregates(v_mview_id) = true, ' GROUP BY ', ''), flexviews.get_delta_groupby(v_mview_id), ' ');
 SET @MV_DEBUG = v_sql;
@@ -1129,7 +1129,7 @@ IF v_error = 1 THEN
   CALL flexviews.signal('COULD NOT VALIDATE MATERIALIZED VIEW.  CHECK @MV_DEBUG.');
 END IF;
 
-LEAVE atOnce;
+LEAVE theLoop;
 END LOOP;
 
 END;;

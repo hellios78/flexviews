@@ -56,9 +56,9 @@ SELECT mview_name,
  
 
  SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_new ');
- SET @v_keys = mview_get_keys(v_mview_id);
+ SET @v_keys = flexviews.get_keys(v_mview_id);
  IF @v_keys != "" THEN
-   SET v_sql = CONCAT(v_sql,'(', mview_get_keys(v_mview_id), ')');
+   SET v_sql = CONCAT(v_sql,'(', flexviews.get_keys(v_mview_id), ')');
  END IF;
  SET v_sql = CONCAT(v_sql, ' AS ');
  SET v_sql = CONCAT(v_sql, v_mview_definition);
