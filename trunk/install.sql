@@ -51,7 +51,7 @@ USE flexviews;
 \. ./procs/delta.sql
 \. ./procs/disable.sql
 \. ./procs/enable.sql
-\. ./procs/get_from_clause.sql
+\. ./procs/get_from.sql
 \. ./procs/get_grouping_list.sql
 \. ./procs/get_id.sql
 \. ./procs/get_keys.sql
