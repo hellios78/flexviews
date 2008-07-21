@@ -27,35 +27,34 @@ CREATE DEFINER=`flexviews`@`localhost` PROCEDURE `flexviews`.`add_table`(
   IN v_mview_join_condition TEXT
 )
 BEGIN
-  DECLARE v_exists boolean default false;
   IF flexviews.is_enabled(v_mview_id) = 1 THEN
     CALL flexviews.signal('MAY_NOT_MODIFY_ENABLED_MVIEW');
   END IF;
-
+/*
   SELECT true
-    INTO v_exists
-    FROM information_schema.columns
+    INTO @v_exists
+    FROM information_schema.tables
    WHERE table_name = v_mview_table_name
      AND table_schema = v_mview_table_schema
    LIMIT 1;
 
-  if v_exists != true then
+  if @v_exists != true then
     call flexviews.signal('NO_SUCH_TABLE'); 
   end if;
 
-  SET v_exists = false;
+  SET @v_exists = false;
 
   SELECT true
-    INTO v_exists
-    FROM information_schema.columns
+    INTO @v_exists
+    FROM information_schema.tables
    WHERE table_name = CONCAT(v_mview_table_name, '_mvlog')
      AND table_schema = v_mview_table_schema
    LIMIT 1;
 
-  if v_exists != true then
+  if @v_exists != true then
     call flexviews.signal('TABLE_MUST_HAVE_MVLOG'); 
   end if;
-
+*/
   INSERT INTO flexviews.mview_table
   (  mview_id,
      mview_table_name,

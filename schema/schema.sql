@@ -87,7 +87,7 @@ SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
 CREATE TABLE `mview_uow` (
   `uow_id` SERIAL default NULL,
-  `commit_time` datetime default NULL,
+  `commit_time` TIMESTAMP,
   KEY `commit_time` (`commit_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 SET character_set_client = @saved_cs_client;
