@@ -16,6 +16,8 @@ call flexviews.add_expr(@mvid, 'GROUP', 'o.OrderDate', 'OrderDate');
 call flexviews.add_expr(@mvid, 'SUM', 'od.UnitPrice * od.Quantity', 'TotalSalesDollars');
 call flexviews.add_expr(@mvid, 'COUNT', '*', 'cnt');
 
+
+call flexviews.enable(@mvid);
 -- ----------------------------------------------------
 
 call flexviews.CREATE('demo',
