@@ -56,6 +56,7 @@ USE flexviews;
 \. ./procs/get_id.sql
 \. ./procs/get_keys.sql
 \. ./procs/get_select_list.sql
+\. ./procs/get_sql.sql
 \. ./procs/get_trigger_body.sql
 \. ./procs/get_where.sql
 \. ./procs/is_enabled.sql
