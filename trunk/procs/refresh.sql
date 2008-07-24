@@ -37,6 +37,8 @@ DECLARE v_refreshed_to_uow_id BIGINT;
 DECLARE v_current_uow_id BIGINT;
 SET v_mode = UPPER(v_mode);
 
+SET max_sp_recursion_depth=9999;
+
 IF NOT flexviews.is_enabled(v_mview_id) = 1 THEN
     CALL flexviews.signal('MV_NOT_ENABLED');
 END IF;

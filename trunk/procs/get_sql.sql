@@ -28,7 +28,18 @@ READS SQL DATA
 BEGIN
   DECLARE v_sql TEXT default '';
 
-  SET v_sql = CONCAT(flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
+  -- COMPLETE REFRESH views store the SQL in the 
+  -- mview table
+  SELECT mview_definition
+    INTO v_sql
+    FROM flexviews.mview
+   WHERE mview_id = v_mview_id;
+
+  IF (v_sql IS NOT NULL) THEN
+    RETURN v_sql;
+  END IF;
+ 
+  SET v_sql = CONCAT(flexviews.get_select(v_mview_id, 'CREATE','\n'), char(10));
   SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, '\nJOIN', ''));
   SET v_sql = CONCAT(v_sql, flexviews.get_where(v_mview_id));
 
