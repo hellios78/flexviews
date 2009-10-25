@@ -18,8 +18,6 @@
 */
 
 DROP TABLE IF EXISTS `mview`;
-SET @saved_cs_client     = @@character_set_client;
-SET character_set_client = utf8;
 CREATE TABLE `mview` (
   `mview_id` int(11) NOT NULL auto_increment,
   `mview_name` varchar(50) default NULL,
@@ -35,12 +33,16 @@ CREATE TABLE `mview` (
   PRIMARY KEY  (`mview_id`),
   UNIQUE KEY `mview_name` (`mview_name`,`mview_schema`)
 ) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=latin1;
-SET character_set_client = @saved_cs_client;
 
+DROP TABLE IF EXISTS binlog_consumer_status;
+
+CREATE TABLE `binlog_consumer_status` (
+  `master_log_file` varchar(100) NOT NULL DEFAULT '',
+  `master_log_pos` int(11) DEFAULT NULL,
+  PRIMARY KEY (`master_log_file`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin
 
 DROP TABLE IF EXISTS `mview_expression`;
-SET @saved_cs_client     = @@character_set_client;
-SET character_set_client = utf8;
 CREATE TABLE `mview_expression` (
   `mview_expression_id` int(11) NOT NULL auto_increment,
   `mview_id` int(11) default NULL,
@@ -52,7 +54,6 @@ CREATE TABLE `mview_expression` (
   UNIQUE KEY `mview_id` (`mview_id`,`mview_alias`),
   KEY `mview_id_2` (`mview_id`,`mview_expr_order`)
 ) ENGINE=InnoDB AUTO_INCREMENT=49 DEFAULT CHARSET=latin1;
-SET character_set_client = @saved_cs_client;
 
 
 DROP TABLE IF EXISTS `mview_refresh_status`;
@@ -67,8 +68,6 @@ DROP TABLE IF EXISTS `mview_refresh_status`;
 
 
 DROP TABLE IF EXISTS `mview_table`;
-SET @saved_cs_client     = @@character_set_client;
-SET character_set_client = utf8;
 CREATE TABLE `mview_table` (
   `mview_table_id` int(11) NOT NULL auto_increment,
   `mview_id` int(11) NOT NULL,
@@ -79,25 +78,12 @@ CREATE TABLE `mview_table` (
   `mview_join_order` int(11) default '999',
   PRIMARY KEY  (`mview_table_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=latin1;
-SET character_set_client = @saved_cs_client;
 
 
 DROP TABLE IF EXISTS `mview_uow`;
-SET @saved_cs_client     = @@character_set_client;
-SET character_set_client = utf8;
 CREATE TABLE `mview_uow` (
   `uow_id` SERIAL default NULL,
   `commit_time` TIMESTAMP,
   KEY `commit_time` (`commit_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
-SET character_set_client = @saved_cs_client;
 
-/*
-DROP TABLE IF EXISTS `mview_uow_sequence`;
-SET @saved_cs_client     = @@character_set_client;
-SET character_set_client = utf8;
-CREATE TABLE `mview_uow_sequence` (
-  `uow_id` SERIAL default NULL
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
-SET character_set_client = @saved_cs_client;
-*/
