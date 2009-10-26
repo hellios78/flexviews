@@ -1,5 +1,5 @@
 --- mysql-binlog-dump.c	2009-07-01 03:39:51.000000000 -0700
-+++ mysql-binlog-dump.c	2009-10-25 00:08:52.000000000 -0700
++++ fv-binlog-dump.c	2009-10-25 19:58:31.000000000 -0700
 @@ -1,5 +1,6 @@
  /* $%BEGINLICENSE%$
   Copyright (C) 2008 MySQL AB, 2008 Sun Microsystems, Inc
@@ -45,20 +45,17 @@
  	guint i;
  	network_mysqld_table *tbl;
  	int err = 0;
-@@ -458,12 +468,20 @@
+@@ -458,12 +468,17 @@
  				event->event.query_event.query ? event->event.query_event.query : "(null)"
  			 );
  #else
 -		g_print("-- %s: db = %s\n%s\n\n",
 +	#if 1
 +		if(strstr(event->event.query_event.query, "BEGIN") != NULL) {
-+		g_print("-- %s: db = %s\nBEGIN;\n%s('%s',%d);\n\n%s\n%s\n\n",
++		g_print("-- %s: db = %s\nBEGIN;\nSET SQL_LOG_BIN=0;\n%s\n%s\n\n",
  				G_STRLOC,
  				event->event.query_event.db_name ? event->event.query_event.db_name : "(null)",
 -				event->event.query_event.query ? event->event.query_event.query : "(null)"
-+				"REPLACE INTO flexviews.binlog_consumer_status values",
-+				logfile,
-+				binlog_pos, 
 +				event->event.query_event.query ? "INSERT INTO flexviews.mview_uow values (NULL,NULL);" : "",
 +				event->event.query_event.query ? "SET @fv_uow_id = LAST_INSERT_ID();" : ""
  			 );
@@ -68,11 +65,40 @@
  #endif
  		break;
  	case STOP_EVENT:
-@@ -542,23 +560,27 @@
+@@ -482,6 +497,12 @@
+ 	case INTVAR_EVENT: /* 5 */
+ 	 	break;
+ 	case XID_EVENT: /* 16 */
++		g_print("-- %s\nSET SQL_LOG_BIN=1;\nREPLACE INTO flexviews.binlog_consumer_status VALUES('%s',%d);\nCOMMIT;\n",
++				G_STRLOC,
++				logfile,
++				binlog_pos 
++			 );
++		
+ 		break;
+ 	case ROTATE_EVENT: /* 4 */
+ 		break;
+@@ -511,6 +532,7 @@
+ #endif
+ 
+ 		do {
++			
+ 			GPtrArray *pre_fields, *post_fields = NULL;
+ 			GString *out = g_string_new(NULL);
+ 			gchar *post_bits = NULL, *pre_bits;
+@@ -541,24 +563,34 @@
+ 			}
  
  			/* call lua */
- 
-+			
+-
++			#if 0
++			if ((tbl->db_name->str == "mon_db" || tbl->db_name->str == "flexviews") && 
++			    (tbl->table_name->str == "metrics" || tbl->table_name->str == "mview_signal"))
++			#else 
++			if (1)
++			#endif
++			{
++ 	
  			switch (event->event_type) {
  			case UPDATE_ROWS_EVENT:
 -				g_string_append_printf(out, "UPDATE %s.%s\n   SET ",
@@ -101,7 +127,7 @@
  						case MYSQL_TYPE_DATETIME:
  
  						case MYSQL_TYPE_TINY:
-@@ -566,15 +588,15 @@
+@@ -566,15 +598,15 @@
  						case MYSQL_TYPE_INT24:
  						case MYSQL_TYPE_LONG:
  						case MYSQL_TYPE_ENUM:
@@ -120,7 +146,7 @@
  							break;
  						case MYSQL_TYPE_NEWDECIMAL:
  							g_string_append_printf(out, "'...(decimal)'");
-@@ -588,14 +610,19 @@
+@@ -588,14 +620,19 @@
  					}
  				}
  
@@ -145,7 +171,7 @@
  					} else {
  						switch((guchar)field->fielddef->type) {
  						case MYSQL_TYPE_TIMESTAMP:
-@@ -607,15 +634,15 @@
+@@ -607,15 +644,15 @@
  						case MYSQL_TYPE_INT24:
  						case MYSQL_TYPE_LONG:
  						case MYSQL_TYPE_ENUM:
@@ -164,7 +190,7 @@
  							break;
  						case MYSQL_TYPE_NEWDECIMAL:
  							g_string_append_printf(out, "'...(decimal)'");
-@@ -628,9 +655,14 @@
+@@ -628,9 +665,14 @@
  						}
  					}
  				}
@@ -180,7 +206,7 @@
  						tbl->db_name->str,
  						tbl->table_name->str);
  
-@@ -674,20 +706,20 @@
+@@ -674,20 +716,20 @@
  					}
  				}
  
@@ -205,7 +231,7 @@
  					} else {
  						switch((guchar)field->fielddef->type) {
  						case MYSQL_TYPE_TIMESTAMP:
-@@ -699,15 +731,15 @@
+@@ -699,15 +741,15 @@
  						case MYSQL_TYPE_INT24:
  						case MYSQL_TYPE_LONG:
  						case MYSQL_TYPE_ENUM:
@@ -224,7 +250,7 @@
  							break;
  						case MYSQL_TYPE_NEWDECIMAL:
  							g_string_append_printf(out, "'...(decimal)'");
-@@ -720,12 +752,13 @@
+@@ -720,12 +762,15 @@
  						}
  					}
  				}
@@ -235,11 +261,13 @@
  				break;
  			}
 -#if 0
++
++			}
 +#if 1 
  			g_print("-- %s:\n%s\n\n", G_STRLOC, out->str);
  #endif
  
-@@ -917,7 +950,7 @@
+@@ -917,7 +962,7 @@
  		
  		if (network_mysqld_proto_get_binlog_event(packet, binlog, event)) {
  			g_debug_hexdump(G_STRLOC, packet->data->str + 19, packet->data->len - 19);
