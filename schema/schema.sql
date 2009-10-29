@@ -40,7 +40,7 @@ CREATE TABLE `binlog_consumer_status` (
   `master_log_file` varchar(100) NOT NULL DEFAULT '',
   `master_log_pos` int(11) DEFAULT NULL,
   PRIMARY KEY (`master_log_file`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 DROP TABLE IF EXISTS `mview_expression`;
 CREATE TABLE `mview_expression` (
