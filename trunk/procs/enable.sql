@@ -91,7 +91,9 @@ BEGIN
      SET v_sql = CONCAT(v_sql, flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
      SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
 
-     SET v_sql = CONCAT(v_sql, flexviews.get_where(v_mview_id), char(10));
+     IF flexviews.get_where(v_mview_id) THEN
+     	SET v_sql = CONCAT(v_sql, ' WHERE ', flexviews.get_where(v_mview_id), char(10));
+     END IF;
 
      SET v_sql = CONCAT(v_sql, IF(flexviews.has_aggregates(v_mview_id) = true, ' GROUP BY ', ''), flexviews.get_delta_groupby(v_mview_id), char(10)); 
      SET v_sql = CONCAT(v_sql, ');');
@@ -127,7 +129,7 @@ END IF;
 
       SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,KEY(uow_id))', char(10));
       SET v_sql = CONCAT(v_sql, 'ENGINE=INNODB ');
-      SET v_sql = CONCAT(v_sql, 'AS ( SELECT * FROM ', v_mview_schema, '.', v_mview_name, ' WHERE 0=1 LIMIT 1)');
+      SET v_sql = CONCAT(v_sql, 'AS ( SELECT * FROM ', v_mview_schema, '.', v_mview_name, ' LIMIT 0)');
       SET @v_sql = v_sql;
       PREPARE create_stmt FROM @v_sql;
       EXECUTE create_stmt;
