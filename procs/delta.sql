@@ -1052,6 +1052,7 @@ IF flexviews.has_aggregates(v_mview_id) = 1 THEN
      DECLARE v_mview_alias TEXT;
      DECLARE v_has_count BOOLEAN DEFAULT FALSE;
      DECLARE v_has_sum BOOLEAN DEFAULT FALSE;
+     DECLARE v_where_clause TEXT DEFAULT "";
 
      DECLARE expr_cur
       CURSOR FOR
@@ -1108,10 +1109,14 @@ SET v_error=0;
 -- put together the SELECT statement to make sure it works
 SET v_sql = CONCAT(flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
 SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
-SET v_sql = CONCAT(v_sql, flexviews.get_where(v_mview_id));
+IF flexviews.get_where(v_mview_id) != "" THEN
+  SET v_sql = CONCAT(v_sql, ' WHERE ' , flexviews.get_where(v_mview_id));
+END IF;
 
-SET v_sql = CONCAT(v_sql, ' WHERE 0=1 ');
 SET v_sql = CONCAT(v_sql, IF(flexviews.has_aggregates(v_mview_id) = true, ' GROUP BY ', ''), flexviews.get_delta_groupby(v_mview_id), ' ');
+
+SET v_sql = CONCAT(v_sql, ' LIMIT 0');
+
 SET @MV_DEBUG = v_sql;
 BEGIN
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
