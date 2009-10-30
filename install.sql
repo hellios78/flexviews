@@ -69,6 +69,11 @@ USE flexviews;
 \. ./procs/set_definition.sql
 \. ./procs/signal.sql
 \. ./procs/uow.sql
+\. ./procs/get_setting.sql
 
 CALL flexviews.uow_start(@uow_id);
+
+REPLACE into flexviews.mview_settings values ('mvlog_db', 'flexviews');
 set @uow_id = NULL;
+
+SELECT 'If you see no errors, then installation was successful.' as message;

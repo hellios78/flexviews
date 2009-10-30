@@ -16,6 +16,7 @@
 
  $%ENDLICENSE%$ --]]
 local binlog = assert(require("mysql.binlog"))
+-- require"std"
 
 local logfile = "/tmp/rbr.bin"
 local f = assert(binlog.open(logfile))
