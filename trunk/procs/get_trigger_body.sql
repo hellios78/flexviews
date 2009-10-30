@@ -42,7 +42,7 @@ BEGIN
     
     OPEN cur_columns;
     
-    SET v_return = CONCAT(IFNULL(v_return, ''), ' INSERT INTO ', v_schema_name, '.', v_table_name, '_mvlog',
+    SET v_return = CONCAT(IFNULL(v_return, ''), ' INSERT INTO ', flexviews.get_setting('mvlog_db'), '.', v_table_name, '_mvlog',
                           ' VALUES (', v_dml_type, ', @__uow_id');
      
     columnLoop: LOOP

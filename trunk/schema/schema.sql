@@ -30,17 +30,24 @@ CREATE TABLE `mview` (
   `mview_definition` varchar(32000),
   `incremental_hwm` bigint(20) default NULL,
   `refreshed_to_uow_id` bigint(20) default NULL,
+  `parent_mview_id` int null, 
   PRIMARY KEY  (`mview_id`),
   UNIQUE KEY `mview_name` (`mview_name`,`mview_schema`)
 ) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=latin1;
 
 DROP TABLE IF EXISTS binlog_consumer_status;
-
 CREATE TABLE `binlog_consumer_status` (
   `master_log_file` varchar(100) NOT NULL DEFAULT '',
   `master_log_pos` int(11) DEFAULT NULL,
   PRIMARY KEY (`master_log_file`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+DROP TABLE IF EXISTS mview_settings;
+CREATE TABLE mview_settings(
+  setting_key varchar(20), 
+  setting_value varchar(50),
+  primary key (setting_key)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 collate latin1_bin;
 
 DROP TABLE IF EXISTS `mview_expression`;
 CREATE TABLE `mview_expression` (

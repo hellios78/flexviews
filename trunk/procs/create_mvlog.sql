@@ -45,7 +45,7 @@ BEGIN
 
   
   set @OUTPUT = CONCAT('DELIMITER ;;\n');
-  SET @OUTPUT = CONCAT(@OUTPUT,'\nDROP TABLE IF EXISTS ', v_schema_name, '.', v_table_name, '_mvlog;;\n');
+  SET @OUTPUT = CONCAT(@OUTPUT,'\nDROP TABLE IF EXISTS ', flexviews.get_setting('mvlog_db'), '.', v_table_name, '_mvlog;;\n');
   OPEN cur_columns;
   
   SET v_sql = '';
@@ -64,7 +64,7 @@ BEGIN
     SET v_sql = CONCAT(v_sql, v_column_name, ' ', v_data_type);
   END LOOP; 
   
-  SET v_sql = CONCAT('CREATE TABLE ', v_schema_name, '.', v_table_name, '_mvlog', 
+  SET v_sql = CONCAT('CREATE TABLE ', flexviews.get_setting('mvlog_db'), '.', v_table_name, '_mvlog', 
                  '( dml_type INT DEFAULT 0, uow_id BIGINT, ', v_sql, 'KEY(uow_id) ) ENGINE=INNODB');
    
   set @OUTPUT = CONCAT(@OUTPUT, v_sql, ';;\n\n');
