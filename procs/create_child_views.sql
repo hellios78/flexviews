@@ -18,10 +18,9 @@ DELIMITER ;;
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-DROP FUNCTION IF EXISTS flexviews.`create_child_views` ;;
+DROP PROCEDURE IF EXISTS flexviews.`create_child_views` ;;
 
-CREATE DEFINER=`flexviews`@`localhost` FUNCTION flexviews.`create_child_views`(v_mview_id INT) RETURNS TEXT CHARSET latin1
-READS SQL DATA
+CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`create_child_views`(IN v_mview_id INT) 
 BEGIN
   DECLARE v_done boolean DEFAULT FALSE;
   DECLARE v_mview_expr_type VARCHAR(50);
@@ -52,7 +51,7 @@ BEGIN
       v_mview_expression,
       v_mview_alias,
       v_mview_expression_id,
-      v_mview_expression_type;
+      v_mview_expr_type;
 
       CALL flexviews.create(flexviews.get_setting('mvlog_db'), concat('mv$',v_mview_id,'$',v_mview_expression_id));
       SET v_new_mview_id := LAST_INSERT_ID();
@@ -92,77 +91,6 @@ BEGIN
 
   END LOOP exprLoop;
 
-  IF v_mview_expression IS NOT NULL THEN
-    SET v_key_list = CONCAT('PRIMARY KEY ', v_mview_alias, '(', v_mview_expression, ')');
-  ELSE
-    -- NO PRIMARY KEY DEFINED, WE NEED TO SELECT ONE FOR THE USER
-    SELECT mview_refresh_type 
-      INTO v_mview_refresh_type
-      FROM flexviews.mview
-     WHERE mview_id = v_mview_id;
-
-    SET v_done=FALSE; 
-    -- a mview can't have both COLUMN expressions and GROUP BY expressions....
-    -- so figure out which one this one uses.
-    SELECT MIN(mview_expr_type)
-      INTO v_mview_expr_type
-      FROM flexviews.mview_expression
-     WHERE mview_expr_type = 'GROUP';
-
-    IF v_mview_expr_type IS NULL THEN
-      SELECT DISTINCT mview_expr_type
-        INTO v_mview_expr_type
-        FROM flexviews.mview_expression
-       WHERE mview_expr_type = 'COLUMN';
-    END IF;
-    OPEN cur_expr;
-
-    exprLoop: LOOP
-      FETCH cur_expr INTO
-        v_mview_expression,
-        v_mview_alias;
-
-      IF v_done THEN 
-         CLOSE cur_expr;
-         LEAVE exprLoop;
-      END IF;
-
-      IF v_key_list != '' THEN
-        SET v_key_list = CONCAT(v_key_list, ','); 
-      END IF;
-      SET v_key_list = CONCAT(v_key_list, v_mview_alias);
-    END LOOP;
-
-    IF v_key_list != '' THEN
-      IF v_mview_expr_type = 'GROUP' THEN
-        SET v_key_list = CONCAT('PRIMARY KEY (', v_key_list, ')');
-      ELSE
-        SET v_key_list = CONCAT('KEY (', v_key_list, ')');
-      END IF;
-    END IF;
-  END IF;
-
-  SET v_mview_expr_type = 'KEY';
-  SET v_done=FALSE;
-  OPEN cur_expr;
-
-  exprLoop: LOOP
-    FETCH cur_expr INTO
-      v_mview_expression,
-      v_mview_alias;
-    
-    IF v_done THEN
-       CLOSE cur_expr;
-       LEAVE exprLoop;
-    END IF;
-
-    IF v_key_list != '' THEN
-      SET v_key_list = CONCAT(v_key_list, ',');
-    END IF;
-    SET v_key_list = CONCAT(v_key_list, 'KEY ', v_mview_alias, '(', v_mview_expression, ')');
-  END LOOP;
-
-  RETURN v_key_list;
 END ;;
 
 DELIMITER ;
