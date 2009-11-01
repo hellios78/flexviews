@@ -47,6 +47,7 @@ USE flexviews;
 \. ./procs/add_expr.sql
 \. ./procs/add_table.sql
 \. ./procs/create_mvlog.sql
+\. ./procs/create_child_views.sql
 \. ./procs/create.sql
 \. ./procs/delta.sql
 \. ./procs/disable.sql

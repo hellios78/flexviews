@@ -31,6 +31,16 @@ BEGIN
    WHERE mview_id = v_mview_id
      AND mview_expr_type in ('MIN','MAX','COUNT_DISTINCT');
 
+   -- Destroy any existing child materialization
+   SET v_new_mview_id := flexviews.get_id(flexviews.get_setting('mvlog_db'), concat('mv$', v_mview_id));
+   IF v_new_mview_id is not null and v_new_mview_id != 0 THEN
+     CALL flexviews.disable(v_new_mview_id);
+     DELETE from flexviews.mview_expression where mview_id = v_new_mview_id;
+     DELETE from flexviews.mview_table where mview_id = v_new_mview_id;
+     DELETE from flexviews.mview where mview_id = v_new_mview_id;
+     SET v_new_mview_id := NULL;
+   END IF;
+
   IF v_needs_dependent_view is not null and v_needs_dependent_view > 0 THEN
 
       -- Create the new view and set its parent to be the view we are enabling
@@ -40,7 +50,7 @@ BEGIN
 
 
       -- Copy the tables into the new child mview
-      INSERT INTO flexviews.mview_table
+      REPLACE INTO flexviews.mview_table
       (mview_table_id, mview_id, mview_table_name, mview_table_schema, mview_table_alias, mview_join_condition, mview_join_order)
       SELECT NULL,
              v_new_mview_id,
@@ -53,7 +63,7 @@ BEGIN
        WHERE mview_id = v_mview_id;
 
       -- Copy the GB projections and any selections (where clauses) to the new view 
-      INSERT INTO flexviews.mview_expression
+      REPLACE INTO flexviews.mview_expression
       (mview_expression_id, mview_id, mview_expr_type, mview_expression, mview_alias, mview_expr_order)
       SELECT NULL,
 	     v_new_mview_id,
