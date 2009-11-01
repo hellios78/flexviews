@@ -32,8 +32,10 @@ BEGIN
   DECLARE v_mview_definition TEXT;
   DECLARE v_keys TEXT;
 
+  DECLARE v_child_mview_id INT;
   DECLARE v_sql TEXT;
 
+  SET max_sp_recursion_depth = 999;
   SELECT mview_name, 
          mview_schema, 
 	 mview_enabled, 
@@ -48,12 +50,23 @@ BEGIN
          v_mview_definition
     FROM flexviews.mview
    WHERE mview_id = v_mview_id;
+/*
     IF v_mview_id IS NULL THEN
      CALL flexviews.signal('The specified materialized view does not exist');
     END IF;
 
    IF v_mview_enabled = FALSE THEN
      CALL flexviews.signal('This materialized view is already disabled');
+   END IF;
+*/
+
+   SELECT mview_id
+     INTO v_child_mview_id
+     FROM flexviews.mview
+    WHERE parent_mview_id = v_mview_id;
+
+   IF v_child_mview_id IS NOT NULL THEN
+     CALL flexviews.disable(v_child_mview_id);
    END IF;
 
    SET v_sql = CONCAT('DROP TABLE IF EXISTS ', v_mview_schema, '.', v_mview_name);
