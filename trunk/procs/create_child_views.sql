@@ -22,42 +22,26 @@ DROP PROCEDURE IF EXISTS flexviews.`create_child_views` ;;
 
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`create_child_views`(IN v_mview_id INT) 
 BEGIN
-  DECLARE v_done boolean DEFAULT FALSE;
-  DECLARE v_mview_expr_type VARCHAR(50);
-  DECLARE v_mview_expression TEXT default NULL;
-  DECLARE v_mview_alias TEXT;
-  DECLARE v_key_list TEXT default '';
-  DECLARE v_mview_refresh_type TEXT;
-  DECLARE v_mview_expression_id INT;
   DECLARE v_new_mview_id INT;
+  DECLARE v_needs_dependent_view BOOLEAN DEFAULT FALSE;
 
-  DECLARE cur_expr CURSOR FOR
-  SELECT mview_expression, 
-         mview_alias,
-	 mview_expression_id,
-         mview_expression_type
-    FROM flexviews.mview_expression 
-   WHERE mview_expr_type in ('MIN','MAX','COUNT_DISTINCT')
-     AND mview_id = v_mview_id
-   ORDER BY mview_expr_order;
-  
-  DECLARE CONTINUE HANDLER FOR
-  SQLSTATE '02000'
-    SET v_done = TRUE;
+  SELECT count(*)
+    INTO v_needs_dependent_view
+    FROM flexviews.mview_expression
+   WHERE mview_id = v_mview_id
+     AND mview_expr_type in ('MIN','MAX','COUNT_DISTINCT');
 
-  OPEN cur_expr;
-  exprLoop: LOOP
-    FETCH cur_expr INTO 
-      v_mview_expression,
-      v_mview_alias,
-      v_mview_expression_id,
-      v_mview_expr_type;
+  IF v_needs_dependent_view is not null and v_needs_dependent_view > 0 THEN
 
-      CALL flexviews.create(flexviews.get_setting('mvlog_db'), concat('mv$',v_mview_id,'$',v_mview_expression_id));
+      -- Create the new view and set its parent to be the view we are enabling
+      CALL flexviews.create(flexviews.get_setting('mvlog_db'), concat('mv$',v_mview_id),'INCREMENTAL');
       SET v_new_mview_id := LAST_INSERT_ID();
+      UPDATE flexviews.mview set parent_mview_id = v_mview_id where mview_id = v_new_mview_id;
+
 
       -- Copy the tables into the new child mview
       INSERT INTO flexviews.mview_table
+      (mview_table_id, mview_id, mview_table_name, mview_table_schema, mview_table_alias, mview_join_condition, mview_join_order)
       SELECT NULL,
              v_new_mview_id,
              mview_table_name,
@@ -68,29 +52,28 @@ BEGIN
         FROM flexviews.mview_table
        WHERE mview_id = v_mview_id;
 
-      -- Copy the GROUP BY expressions into the child mview
+      -- Copy the GB projections and any selections (where clauses) to the new view 
       INSERT INTO flexviews.mview_expression
+      (mview_expression_id, mview_id, mview_expr_type, mview_expression, mview_alias, mview_expr_order)
       SELECT NULL,
 	     v_new_mview_id,
-             mview_expr_type,
+             if(mview_expr_type not in ('MIN','MAX','COUNT_DISTINCT'), mview_expr_type, 'GROUP'),
              mview_expression,
              mview_alias,         
              mview_expr_order
         FROM flexviews.mview_expression
-       WHERE mview_id = v_mview_id;
+       WHERE mview_id = v_mview_id
+         AND mview_expr_type in ('GROUP','WHERE','MIN','MAX','COUNT_DISTINCT');
 
-       CALL flexviews.add_expr(v_new_mview_id, v_mview_expr_type, v_mview_expression, v_mview_alias);
+
+       -- Add a COUNT(*) as `CNT` since it would be added automatically anyway
        CALL flexviews.add_expr(v_new_mview_id, 'COUNT', '*', 'CNT');
 
+       -- Build the new view (this could be recursive...)
+       SET max_sp_recursion_depth=999;
        CALL flexviews.enable(v_new_mview_id);
 	
-    IF v_done THEN
-      CLOSE cur_expr;
-      LEAVE exprLoop;
-    END IF;
-
-  END LOOP exprLoop;
-
+  END IF;
 END ;;
 
 DELIMITER ;

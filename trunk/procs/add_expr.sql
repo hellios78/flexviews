@@ -68,8 +68,6 @@ BEGIN
         where table_name='mview_expression'
           and table_schema='flexviews'
           and column_name='mview_expr_type';
-     else
-       select 'SUCCESS: expression added' as message;
      end if;
   END IF;
 
