@@ -782,7 +782,7 @@ SELECT mview_expr_type,
        mview_alias
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
-   AND m.mview_expr_type in ( 'AVG','COLUMN','GROUP','SUM','COUNT' )
+   AND m.mview_expr_type in ( 'AVG','COLUMN','GROUP','SUM','COUNT','MIN','MAX','COUNT_DISTINCT' )
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
@@ -825,7 +825,7 @@ selectLoop: LOOP
     SET v_mview_expression = CONCAT('SUM(',v_dml_type, ' * ', v_mview_expression, ')');
   ELSE
     IF v_mview_expr_type != 'AVG' THEN
-      CALL flexviews.signal('UNSUPPORTED EXPRESSION TYPE');
+      SET v_mview_expression = 'COUNT(NULL)';
     END IF;
   END IF;
 
@@ -941,7 +941,7 @@ SELECT mview_alias,
        mview_expression
   FROM flexviews.mview_expression
  WHERE mview_id = v_mview_id
-   AND mview_expr_type in ('MIN','MAX','AVG', 'SUM', 'COUNT');
+   AND mview_expr_type in ('AVG', 'SUM', 'COUNT');
 
 DECLARE CONTINUE HANDLER
 FOR SQLSTATE '02000'
@@ -956,6 +956,7 @@ SELECT mview_name,
    
 
 SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, '\n', 
+'(',flexviews.get_delta_aliases(v_mview_id, '', FALSE),')\n',
 'SELECT * FROM (', v_select_stmt ,') x_select_ \n',
 "ON DUPLICATE KEY UPDATE\n");
 
