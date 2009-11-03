@@ -1180,6 +1180,62 @@ BEGIN
        SET v_id = v_id + 1; 
   END LOOP;
 END;;
+
+DROP FUNCTION IF EXISTS flexviews.get_child_select;;
+
+CREATE DEFINER=flexviews@localhost FUNCTION flexviews.get_child_select(  
+v_mview_id INT
+)
+RETURNS TEXT 
+READS SQL DATA
+BEGIN  
+DECLARE v_done boolean DEFAULT FALSE;  
+DECLARE v_mview_expr_type TEXT;
+DECLARE v_mview_expression TEXT;
+DECLARE v_mview_alias TEXT;
+DECLARE v_select_list TEXT default '';  
+
+DECLARE cur_select CURSOR 
+FOR  
+SELECT mview_expr_type, 
+       mview_alias
+  FROM flexviews.mview_expression m
+ WHERE m.mview_id = v_mview_id
+   AND m.mview_expr_type in ( 'COLUMN', 'GROUP', 'MIN','MAX','COUNT_DISTINCT' )
+ ORDER BY mview_expr_order;  
+
+DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
+    SET v_done = TRUE;  
+
+OPEN cur_select;  
+
+selectLoop: LOOP    
+  FETCH cur_select 
+   INTO v_mview_expr_type,
+        v_mview_alias;
+  
+  IF v_done THEN      
+    CLOSE cur_select;      
+    LEAVE selectLoop;    
+  END IF;    
+
+  SET v_mview_expression := CONCAT('(`', v_mview_alias, '`)');
+  IF v_mview_expr_type != 'GROUP' AND v_mview_expr_type != 'COLUMN' THEN
+    SET v_mview_expression := CONCAT(v_mview_expr_type, v_mview_expression);
+  END IF;
+  
+  IF v_select_list != '' THEN      
+    SET v_select_list := CONCAT(v_select_list, ', ');    
+  END IF;    
+
+  SET v_select_list := CONCAT(v_select_list, v_mview_expression);
+
+END LOOP;  
+
+RETURN v_select_list;
+END ;;
+
+
 DELIMITER ;
 
 
