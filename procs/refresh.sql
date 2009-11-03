@@ -35,6 +35,9 @@ DECLARE v_got_lock TINYINT DEFAULT NULL;
 DECLARE v_incremental_hwm BIGINT;
 DECLARE v_refreshed_to_uow_id BIGINT;
 DECLARE v_current_uow_id BIGINT;
+
+DECLARE v_child_mview_id INT DEFAULT NULL;
+
 SET v_mode = UPPER(v_mode);
 
 SET max_sp_recursion_depth=9999;
@@ -64,14 +67,25 @@ SELECT mview_refresh_type,
   FROM flexviews.mview
  WHERE mview_id = v_mview_id;
 
-SELECT max(uow_id)
-  INTO v_current_uow_id
-  FROM flexviews.mview_uow;
+-- By default we refresh to the latest available unit of work
+-- TODO: This is better handled with a wrapper function
+IF @refresh_to_uowid IS NULL THEN
+  SELECT max(uow_id)
+    INTO v_current_uow_id
+    FROM flexviews.mview_uow;
+ELSE
+  SET v_current_uow_id := @refresh_to_uowid;
+END IF;
 
-SELECT GET_LOCK(CONCAT('mvlock::', v_mview_id),1)
-  INTO v_got_lock;
+SELECT mview_id
+  INTO v_child_mview_id
+  FROM mview
+ WHERE parent_mview_id = v_mview_id;
 
-IF v_got_lock = 1 THEN
+-- TODO: remove the IF block.  
+-- This used to be protected by a GET_LOCK(), but this is not necessary
+-- with the external binlog consumer.
+IF TRUE THEN
  SET @v_start_time = NOW();
 
  IF v_mview_refresh_type = 'COMPLETE' THEN
@@ -88,6 +102,21 @@ IF v_got_lock = 1 THEN
    -- this will recursively populate the materialized view delta table
    IF v_mode = 'BOTH' OR v_mode = 'COMPUTE' THEN
      CALL flexviews.rlog(CONCAT('-- START PROPAGATE\nCALL flexviews.execute_refresh(', v_mview_id, ',', v_incremental_hwm, ',', v_current_uow_id, ',1);'));
+     IF v_child_mview_id IS NOT NULL THEN
+       BEGIN
+       DECLARE v_incremental_hwm BIGINT;
+
+         -- The incremental high water mark of the dependent table may be different from 
+         -- the parent table, so explicity fetch it to make sure we don't push the wrong
+         -- values into the mview
+         SELECT incremental_hwm
+           INTO v_incremental_hwm
+           FROM mview
+          WHERE mview_id = v_child_mview_id;
+
+          CALL flexviews.execute_refresh(v_child_mview_id, v_incremental_hwm, v_current_uow_id, 1);
+        END;
+     END IF;
      CALL flexviews.execute_refresh(v_mview_id, v_incremental_hwm, v_current_uow_id, 1);    
      CALL flexviews.rlog('-- END PROPAGATE');
    END IF;  
