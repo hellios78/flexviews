@@ -35,6 +35,8 @@ CREATE TABLE `mview` (
   UNIQUE KEY `mview_name` (`mview_name`,`mview_schema`)
 ) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=latin1;
 
+CREATE TABLE IF NOT EXISTS flexviews.refresh_log(tstamp timestamp, usec int auto_increment,  message TEXT, key(usec));
+
 DROP TABLE IF EXISTS binlog_consumer_status;
 CREATE TABLE `binlog_consumer_status` (
   `master_log_file` varchar(100) NOT NULL DEFAULT '',
