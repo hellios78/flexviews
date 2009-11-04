@@ -38,6 +38,11 @@ DECLARE v_current_uow_id BIGINT;
 
 DECLARE v_child_mview_id INT DEFAULT NULL;
 
+DECLARE v_sql TEXT DEFAULT '';
+
+DECLARE v_mview_schema TEXT;
+DECLARE v_mview_name TEXT;
+
 SET v_mode = UPPER(v_mode);
 
 SET max_sp_recursion_depth=9999;
@@ -58,12 +63,16 @@ SELECT mview_refresh_type,
        mview_last_refresh, 
        incremental_hwm,
        refreshed_to_uow_id,
-       mview_refresh_period
+       mview_refresh_period,
+       mview_schema, 
+       mview_name
   INTO v_mview_refresh_type,
        v_mview_last_refresh,
        v_incremental_hwm,
        v_refreshed_to_uow_id,
-       v_mview_refresh_period
+       v_mview_refresh_period, 
+       v_mview_schema, 
+       v_mview_name
   FROM flexviews.mview
  WHERE mview_id = v_mview_id;
 
@@ -127,12 +136,62 @@ IF TRUE THEN
        CONCAT('CALL flexviews.apply_delta(', v_mview_id, ',', v_current_uow_id, ');')
      ));
 
-     CALL flexviews.apply_delta(v_mview_id, v_current_uow_id);
+     BEGIN 
+     DECLARE v_child_mview_name TEXT;
+     DECLARE v_agg_set TEXT;
 
-     UPDATE flexviews.mview
-        SET refreshed_to_uow_id = v_current_uow_id, 
-            mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
-      WHERE mview_id = v_mview_id;
+       IF v_child_mview_id IS NOT NULL THEN
+       	 CALL flexviews.apply_delta(v_child_mview_id, v_current_uow_id);
+
+         UPDATE flexviews.mview
+            SET refreshed_to_uow_id = v_current_uow_id, 
+                mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
+          WHERE mview_id = v_child_mview_id;
+
+	 SELECT CONCAT(mview_schema, '.', mview_name)
+           INTO v_child_mview_name
+           FROM flexviews.mview
+          WHERE mview_id = v_child_mview_id;
+
+         SELECT group_concat(concat('`' , v_mview_name, '`.`',mview_alias,'` = `x_alias`.`',mview_alias, '`'),'\n,')
+           INTO v_agg_set
+           FROM flexviews.mview_expression 
+          WHERE mview_id = v_mview_id
+            AND mview_expr_type in('MIN','MAX','COUNT_DISTINCT');
+         
+         SET v_agg_set = LEFT(v_agg_set, LENGTH(v_agg_set)-1);
+
+         SET v_sql = CONCAT('UPDATE ', v_mview_schema, '.', v_mview_name, '\n',
+                            '  JOIN (\n', 
+                            'SELECT ', get_child_select(v_mview_id, 'cv'), '\n',
+                            '  FROM ', v_child_mview_name, ' as cv\n', 
+                            '  JOIN ', v_mview_schema, '.', v_mview_name, '_delta as pv \n ', 
+                            ' USING (', get_delta_aliases(v_mview_id, '', true), ')\n',  
+                            
+                            ' GROUP BY ', get_delta_aliases(v_mview_id, 'cv', true), 
+                            ') x_alias \n'
+                            'USING (', get_delta_aliases(v_mview_id, '', true), ')\n',
+                            '   SET ', v_agg_set , '\n'
+                           );
+
+         SET @v_sql = v_sql;
+         PREPARE update_stmt from @v_sql;
+         EXECUTE update_stmt;   
+         DEALLOCATE PREPARE update_stmt;
+
+         CALL flexviews.apply_delta(v_mview_id, v_current_uow_id);
+                            
+       ELSE
+         -- Just update the one view if there is no dependent view
+         CALL flexviews.apply_delta(v_mview_id, v_current_uow_id);
+       END IF;
+
+       UPDATE flexviews.mview
+          SET refreshed_to_uow_id = v_current_uow_id, 
+              mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
+        WHERE mview_id = v_mview_id;
+
+     END;
    END IF;
 
  ELSE
