@@ -1184,7 +1184,8 @@ END;;
 DROP FUNCTION IF EXISTS flexviews.get_child_select;;
 
 CREATE DEFINER=flexviews@localhost FUNCTION flexviews.get_child_select(  
-v_mview_id INT
+v_mview_id INT, 
+v_alias TEXT
 )
 RETURNS TEXT 
 READS SQL DATA
@@ -1219,16 +1220,20 @@ selectLoop: LOOP
     LEAVE selectLoop;    
   END IF;    
 
-  SET v_mview_expression := CONCAT('(`', v_mview_alias, '`)');
+  SET v_mview_expression := CONCAT('(`', v_alias, '`.`', v_mview_alias, '`)'); 
   IF v_mview_expr_type != 'GROUP' AND v_mview_expr_type != 'COLUMN' THEN
-    SET v_mview_expression := CONCAT(v_mview_expr_type, v_mview_expression);
+    IF v_mview_expr_type = 'COUNT_DISTINCT' THEN
+      SET v_mview_expression := CONCAT('COUNT(DISTINCT ', v_mview_expression);
+    ELSE
+      SET v_mview_expression := CONCAT(v_mview_expr_type, v_mview_expression);
+    END IF;
   END IF;
   
   IF v_select_list != '' THEN      
     SET v_select_list := CONCAT(v_select_list, ', ');    
   END IF;    
 
-  SET v_select_list := CONCAT(v_select_list, v_mview_expression);
+  SET v_select_list := CONCAT(v_select_list, v_mview_expression, ' as `', v_mview_alias , '`' );
 
 END LOOP;  
 
