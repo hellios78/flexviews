@@ -22,7 +22,8 @@ DROP PROCEDURE IF EXISTS flexviews.refresh ;;
 
 CREATE DEFINER=flexviews@localhost PROCEDURE flexviews.refresh(
   IN v_mview_id INT,
-  IN v_mode TEXT
+  IN v_mode TEXT,
+  IN v_uow_id BIGINT 
 )
 BEGIN
 DECLARE v_mview_refresh_type TEXT;
@@ -42,6 +43,8 @@ DECLARE v_sql TEXT DEFAULT '';
 
 DECLARE v_mview_schema TEXT;
 DECLARE v_mview_name TEXT;
+
+DECLARE v_pos INT;
 
 SET v_mode = UPPER(v_mode);
 
@@ -76,15 +79,6 @@ SELECT mview_refresh_type,
   FROM flexviews.mview
  WHERE mview_id = v_mview_id;
 
--- By default we refresh to the latest available unit of work
--- TODO: This is better handled with a wrapper function
-IF @refresh_to_uowid IS NULL THEN
-  SELECT max(uow_id)
-    INTO v_current_uow_id
-    FROM flexviews.mview_uow;
-ELSE
-  SET v_current_uow_id := @refresh_to_uowid;
-END IF;
 
 SELECT mview_id
   INTO v_child_mview_id
@@ -97,6 +91,7 @@ SELECT mview_id
 IF TRUE THEN
  SET @v_start_time = NOW();
 
+ 
  IF v_mview_refresh_type = 'COMPLETE' THEN
    CALL flexviews.mview_refresh_complete(v_mview_id);
 
@@ -105,8 +100,18 @@ IF TRUE THEN
     WHERE mview_id = v_mview_id;
 
  ELSEIF v_mview_refresh_type = 'INCREMENTAL' THEN
-   DROP TEMPORARY TABLE IF EXISTS refresh_log;
-   CREATE TEMPORARY TABLE refresh_log(tstamp timestamp, usec int,  message TEXT);
+ 
+   SET v_current_uow_id = v_uow_id;
+
+   -- IF v_uow_id is null, then that means refresh to NOW.
+   -- You can't refresh backward in time (YET!) so refresh to NOW
+   -- if an older/invalid uow_id is given 
+   IF v_current_uow_id IS NULL OR v_current_uow_id < v_incremental_hwm THEN 
+     -- By default we refresh to the latest available unit of work
+     SELECT max(uow_id)
+       INTO v_current_uow_id
+       FROM flexviews.mview_uow;
+   END IF;
 
    -- this will recursively populate the materialized view delta table
    IF v_mode = 'BOTH' OR v_mode = 'COMPUTE' THEN
