@@ -29,9 +29,9 @@ BEGIN
   DECLARE v_column_name VARCHAR(100);
   DECLARE v_data_type VARCHAR(1024);
   DECLARE v_delim CHAR(5);
-  DECLARE v_sql VARCHAR(32000) default NULL;
   DECLARE v_mview_type TINYINT(4) DEFAULT -1;
   DECLARE v_trig_extension CHAR(3);
+  DECLARE v_sql TEXT;
   DECLARE cur_columns CURSOR
   FOR SELECT COLUMN_NAME, 
              IF(COLUMN_TYPE='TIMESTAMP', 'DATETIME', COLUMN_TYPE) COLUMN_TYPE
@@ -44,8 +44,13 @@ BEGIN
     SET v_done = TRUE;
 
   
-  set @OUTPUT = CONCAT('DELIMITER ;;\n');
-  SET @OUTPUT = CONCAT(@OUTPUT,'\nDROP TABLE IF EXISTS ', flexviews.get_setting('mvlog_db'), '.', v_table_name, '_mvlog;;\n');
+  SET v_sql = CONCAT('DROP TABLE IF EXISTS ', flexviews.get_setting('mvlog_db'), '.', v_table_name, '_mvlog;');
+  SET @v_sql = v_sql;
+  PREPARE drop_stmt from @v_sql;
+  EXECUTE drop_stmt;
+  DEALLOCATE PREPARE drop_stmt;
+
+  
   OPEN cur_columns;
   
   SET v_sql = '';
@@ -67,49 +72,13 @@ BEGIN
   SET v_sql = CONCAT('CREATE TABLE ', flexviews.get_setting('mvlog_db'), '.', v_table_name, '_mvlog', 
                  '( dml_type INT DEFAULT 0, uow_id BIGINT, ', v_sql, 'KEY(uow_id) ) ENGINE=INNODB');
    
-  set @OUTPUT = CONCAT(@OUTPUT, v_sql, ';;\n\n');
+  SET @v_sql = v_sql;
+  PREPARE create_stmt from @v_sql;
+  EXECUTE create_stmt;
+  DEALLOCATE PREPARE create_stmt; 
 
-  SET v_sql = CONCAT('DROP TRIGGER IF EXISTS ', v_schema_name, '.trig_', v_table_name, '_ins ');
-  
-  set @OUTPUT = CONCAT(@OUTPUT, v_sql, ';;\n\n');
-  SET v_sql = CONCAT('CREATE TRIGGER ', v_schema_name, '.trig_', v_table_name, '_ins ');
-  SET v_sql = CONCAT(v_sql, '\nAFTER INSERT ON ', v_schema_name, '.', v_table_name);
-  SET v_sql = CONCAT(v_sql, '\nFOR EACH ROW\nBEGIN\n',
-                            ' CALL flexviews.uow_state_change();\n');
-  CALL flexviews.get_trigger_body(v_table_name, v_schema_name, 1, v_sql); 
-  SET v_sql = CONCAT(v_sql, 'END;\n');
-   
-  set @OUTPUT = CONCAT(@OUTPUT, v_sql, ';;\n\n');
-  SET v_sql = CONCAT('DROP TRIGGER IF EXISTS ', v_schema_name, '.trig_', v_table_name, '_upd ');
-  
-  set @OUTPUT = CONCAT(@OUTPUT, v_sql, ';;\n\n');
-  SET v_sql = CONCAT('CREATE TRIGGER ', v_schema_name, '.trig_', v_table_name, '_upd ');
-  SET v_sql = CONCAT(v_sql, '\nAFTER UPDATE ON ', v_schema_name, '.', v_table_name);
-  SET v_sql = CONCAT(v_sql, '\nFOR EACH ROW\nBEGIN\n',
-                            ' CALL flexviews.uow_state_change();\n');
-  CALL flexviews.get_trigger_body(v_table_name, v_schema_name, -1, v_sql);  
-  CALL flexviews.get_trigger_body(v_table_name, v_schema_name, 1, v_sql);   
-  SET v_sql  = CONCAT(v_sql , ' END;\n');
-   
-  set @OUTPUT = CONCAT(@OUTPUT, v_sql, ';;\n\n');
-  SET v_sql  = CONCAT('DROP TRIGGER IF EXISTS ', v_schema_name, '.trig_', v_table_name, '_del ');
-  
-  set @OUTPUT = CONCAT(@OUTPUT, v_sql, ';;\n\n');
-  SET v_sql  = CONCAT('CREATE TRIGGER ', v_schema_name, '.trig_', v_table_name, '_del ');
-  SET v_sql  = CONCAT(v_sql, '\nAFTER DELETE ON ', v_schema_name, '.', v_table_name);
-  SET v_sql = CONCAT(v_sql, '\nFOR EACH ROW\nBEGIN\n',
-                            ' CALL flexviews.uow_state_change();\n');
-  CALL flexviews.get_trigger_body(v_table_name, v_schema_name, -1, v_sql);  
-  SET v_sql = CONCAT(v_sql, '\nEND;\n');
-   
-  set @OUTPUT = CONCAT(@OUTPUT, v_sql,';;\n\nDELIMITER ;\n');
+  INSERT INTO flexviews.mvlogs (table_schema, table_name, mvlog_name) values (v_schema_name, v_table_name, CONCAT(v_table_name, '_mvlog'));
 
-  set @OUTPUT = CONCAT('\n -- MySQL doesn\'t allow prepared CREATE TRIGGER statements so you will have to \n',
-                ' -- execute the following statements to create a materialized view log.\n',
-                ' /*** BE VERY CAREFUL *** \n THE FOLLOWING STATEMENTS WILL FAIL IF YOU HAVE\n EXISTING *AFTER UPDATE|DELETE|INSERT* TRIGGERS\n ON THE SPECIFIED TABLE\n',
-                '\n You may either change the triggers to *BEFORE* triggers\n or you can merge your trigger bodies with these trigger bodies.\n',
-                '\n Copy everything between (and including) DELIMITER ;; to DELIMITER ; and modify as necessary.\n ***/\n', @OUTPUT);
-  SELECT @OUTPUT;
 END ;;
 
 DELIMITER ;
