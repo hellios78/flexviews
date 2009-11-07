@@ -75,6 +75,7 @@ USE flexviews;
 CALL flexviews.uow_start(@uow_id);
 
 REPLACE into flexviews.mview_settings values ('mvlog_db', 'flexviews');
+REPLACE into flexviews.mview_settings values ('log_bin', '/home/justin.swanhart/local/var/log/');
 set @uow_id = NULL;
 
 SELECT 'If you see no errors, then installation was successful.' as message;
