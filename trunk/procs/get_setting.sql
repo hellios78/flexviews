@@ -20,14 +20,15 @@ DELIMITER ;;
 
 DROP FUNCTION IF EXISTS flexviews.`get_setting`;;
 
-CREATE DEFINER=flexviews@localhost FUNCTION flexviews.`get_setting`( setting_key TEXT) RETURNS TEXT CHARSET latin1
+CREATE DEFINER=flexviews@localhost FUNCTION flexviews.`get_setting`( v_setting_key TEXT) RETURNS TEXT CHARSET latin1
     READS SQL DATA
 BEGIN  
 DECLARE v_setting TEXT;
 
 SELECT setting_value
   INTO v_setting
-  FROM flexviews.mview_settings;
+  FROM flexviews.mview_settings
+ WHERE setting_key = v_setting_key ;
 
 RETURN v_setting;
 END ;;
