@@ -78,4 +78,8 @@ REPLACE into flexviews.mview_settings values ('mvlog_db', 'flexviews');
 REPLACE into flexviews.mview_settings values ('log_bin', '/home/justin.swanhart/local/var/log/');
 set @uow_id = NULL;
 
+-- Flexviews requires a signal table to communicate with the external binlog consumer
+call flexviews.create_mvlog('flexviews', 'mview_signal');
+ALTER TABLE flexviews.mview_signal_mvlog add key(signal_id);
+
 SELECT 'If you see no errors, then installation was successful.' as message;

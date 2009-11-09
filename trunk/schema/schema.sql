@@ -99,3 +99,9 @@ CREATE TABLE `mview_uow` (
   KEY `commit_time` (`commit_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
+DROP TABLE IF EXISTS `mview_signal`;
+CREATE TABLE `mview_signal` (
+  `signal_id` SERIAL default NULL,
+  `signal_time` TIMESTAMP,
+  primary key(signal_id)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
