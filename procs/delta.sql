@@ -280,7 +280,7 @@ CALL flexviews.rlog(CONCAT('InParam: v_depth = ', v_depth));
 CALL flexviews.rlog(CONCAT('InParam: v_method = ', v_method));
 CALL flexviews.rlog(CONCAT('InOutParam: v_uow_id = ', IFNULL(v_uow_id,'NULL')));
 
-CALL flexviews.uow_start(v_uow_id);
+-- CALL flexviews.uow_start(v_uow_id);
 CALL flexviews.rlog(CONCAT('CallCompleted: uow_start'));
 CALL flexviews.rlog(CONCAT('OutParam: v_uow_id= ', v_uow_id));
 
@@ -333,12 +333,16 @@ SET v_sql = CONCAT( v_sql, ' AND (', v_mview_table_alias, '.dml_type * ', v_meth
 END IF;
 SET v_sql = CONCAT('INSERT INTO ', v_delta_table, ' ', v_sql);
 CALL flexviews.rlog(CONCAT('Query: ', v_sql));
+
+/*
 SET @v_sql = v_sql;
 PREPARE insert_stmt FROM @v_sql;
 EXECUTE insert_stmt;
 DEALLOCATE PREPARE insert_stmt;
+*/
 
-CALL flexviews.uow_end(v_uow_id);
+-- Execute the SQL, returning the UOW_ID into v_uow_id, which is an OUT parameter
+call flexviews.uow_execute(v_sql, v_uow_id);
 
 END;;
 

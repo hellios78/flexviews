@@ -86,15 +86,39 @@ DROP PROCEDURE IF EXISTS flexviews.uow_execute;;
 
 CREATE PROCEDURE flexviews.uow_execute(IN v_sql TEXT, OUT v_uow_id BIGINT)
 BEGIN
-  SET @_uow_sql = v_sql;
-  PREPARE stmt FROM @_uow_sql;
+  START TRANSACTION;
+
+  SET @v_sql = v_sql;
+  PREPARE uow_stmt FROM @v_sql;
   
-  -- this will block the slave from applying any additional statements
-  -- to our delta tables for the duration of this procedure
-  CALL flexviews.uow_start(v_uow_id);
-  EXECUTE v_sql;
-  DEALLOCATE PREPARE v_sql;
-  CALL flexviews.uow_end(v_uow_id);
+  EXECUTE uow_stmt;
+  DEALLOCATE PREPARE uow_stmt;
+
+  INSERT INTO flexviews.mview_signal
+
+  SET @signal_id = LAST_INSERT_ID();
+
+  COMMIT;
+
+  BEGIN
+    SET v_uow_id := NULL;
+
+    wait_for_uowid: LOOP
+
+      SELECT uow_id
+        INTO v_uow_id
+        FROM flexviews.mview_signal
+       WHERE signal_id = @signal_id;
+
+      IF (v_uow_id IS NOT NULL) THEN
+        LEAVE wait_for_uowid;
+      END IF;
+
+      SLEEP(1); 
+
+  END LOOP wait_for_uowid;
+
+--  CALL flexviews.uow_end(v_uow_id);
 
 END;;
 
