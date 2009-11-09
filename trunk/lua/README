@@ -1,0 +1,5 @@
+README for BINLOG_CONSUMER
+
+The binlog consumer reads from binary logs and writes mvlog entries into the database.
+
+It requires LuaSQL, MySQL Proxy (for the LUA binlog decoding library), the LUA stdlib and the MySQL client.
