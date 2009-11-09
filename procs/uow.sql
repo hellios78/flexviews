@@ -86,6 +86,7 @@ DROP PROCEDURE IF EXISTS flexviews.uow_execute;;
 
 CREATE PROCEDURE flexviews.uow_execute(IN v_sql TEXT, OUT v_uow_id BIGINT)
 BEGIN
+  DECLARE v_signal_id INT;
   START TRANSACTION;
 
   SET @v_sql = v_sql;
@@ -94,9 +95,10 @@ BEGIN
   EXECUTE uow_stmt;
   DEALLOCATE PREPARE uow_stmt;
 
-  INSERT INTO flexviews.mview_signal
+  INSERT INTO flexviews.mview_signal VALUES ();
 
-  SET @signal_id = LAST_INSERT_ID();
+  SELECT LAST_INSERT_ID() 
+    INTO v_signal_id;
 
   COMMIT;
 
@@ -107,16 +109,17 @@ BEGIN
 
       SELECT uow_id
         INTO v_uow_id
-        FROM flexviews.mview_signal
-       WHERE signal_id = @signal_id;
+        FROM flexviews.mview_signal_mvlog
+       WHERE signal_id = v_signal_id;
 
       IF (v_uow_id IS NOT NULL) THEN
         LEAVE wait_for_uowid;
       END IF;
 
-      SLEEP(1); 
+      SELECT SLEEP(1) INTO @discard; 
 
-  END LOOP wait_for_uowid;
+    END LOOP wait_for_uowid;
+  END;
 
 --  CALL flexviews.uow_end(v_uow_id);
 
