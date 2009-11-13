@@ -154,7 +154,7 @@ function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
   $line = "";
   # loop over the input, collecting all the input values into a set of INSERT statements
   while($line = fgets($proc)) {
-    echo "***$line";
+    #echo "***$line";
     $line = trim($line);
     if($line == "### WHERE") {
       $valList .= "(-1, @fv_uow_id, $serverId";
@@ -165,10 +165,12 @@ function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
            mysql_query($sql) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
         }
 
-        $valList = "(-1, @fv_uow_id, $serverId";
+        $valList = "(1, @fv_uow_id, $serverId";
         $sql = sprintf("INSERT INTO %s.`%s` VALUES ", $mvLogDB, $table, $serverId);
     } elseif(preg_match('/###\s+@[0-9]+=(.*)$/', $line, $matches)) {
-        $valList .= ',' . $matches[1];
+        $val = ltrim($matches[1],"'");
+        $val = rtrim($val,"'");
+        $valList .= ',\'' . $val . '\'';
     } else {
 	#we are done collecting records for the update, so exit the loop
 	$sql .= $valList . ")";
