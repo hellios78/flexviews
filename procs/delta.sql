@@ -1148,42 +1148,9 @@ DROP PROCEDURE IF EXISTS flexviews.rlog;;
 CREATE DEFINER=flexviews@localhost PROCEDURE flexviews.rlog(v_message TEXT)
 BEGIN
 DECLARE v_tstamp DATETIME;
-  IF @DEBUG = TRUE AND @DEBUG IS NOT NULL THEN
-  INSERT INTO flexviews.refresh_log VALUES (NOW(), /*MICROSECOND(now_usec()),*/0, v_message);
-  END IF;
+  INSERT INTO flexviews.refresh_log VALUES (NOW(), NULL, v_message);
 END;;
 drop procedure if exists process_rlog;;
-CREATE PROCEDURE process_rlog() 
-BEGIN
-  DECLARE v_id INT;
-  DECLARE v_tstamp TEXT;
-  DECLARE v_done BOOLEAN DEFAULT FALSE;
- 
-  DROP TABLE IF EXISTS test.refresh_log;
-  CREATE TABLE test.refresh_log (
-    id INT auto_increment primary key, 
-    exec_time double
-  ) AS
-  SELECT *
-    FROM flexviews.refresh_log;
-
-  SET v_id = 1;
-  outerLOOP:LOOP
-    SELECT CONCAT(tstamp, '.', usec)
-      INTO v_tstamp
-      FROM test.refresh_log
-     WHERE id = v_id + 1;
-
-     IF v_tstamp IS NULL THEN
-        LEAVE outerLoop;
-      END IF;
-
-    UPDATE test.refresh_log
-       SET exec_time = TIME(v_tstamp) - TIME(CONCAT(tstamp, '.', usec))
-     WHERE id = v_id;
-       SET v_id = v_id + 1; 
-  END LOOP;
-END;;
 
 DROP FUNCTION IF EXISTS flexviews.get_child_select;;
 

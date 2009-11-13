@@ -43,7 +43,8 @@ CREATE TABLE mvlogs (table_schema varchar(50), table_name varchar(50), mvlog_nam
 DROP TABLE IF EXISTS binlog_consumer_status;
 CREATE TABLE `binlog_consumer_status` (
   `master_log_file` varchar(100) NOT NULL DEFAULT '',
-  `master_log_pos` int(11) DEFAULT NULL,
+  `master_log_size` int(11) DEFAULT NULL,
+  `exec_master_log_pos` int(11) default null,
   PRIMARY KEY (`master_log_file`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
