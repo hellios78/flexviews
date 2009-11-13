@@ -73,7 +73,7 @@ BEGIN
   -- such constructs.  It isn't possible to put mvlogs on almost any internal Flexviews table because
   -- almost all the tables contain uow_id.  mview_signal is an exception.
   SET v_sql = CONCAT('CREATE TABLE ', flexviews.get_setting('mvlog_db'), '.', v_table_name, '_mvlog', 
-                 '( dml_type INT DEFAULT 0, uow_id BIGINT, server_id INT UNSIGNED, ', v_sql, 'KEY(uow_id) ) ENGINE=INNODB');
+                 '( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', v_sql, 'KEY(uow_id) ) ENGINE=INNODB');
    
   SET @v_sql = v_sql;
   PREPARE create_stmt from @v_sql;

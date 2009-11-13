@@ -178,7 +178,7 @@ IF TRUE THEN
                             'USING (', get_delta_aliases(v_mview_id, '', true), ')\n',
                             '   SET ', v_agg_set , '\n'
                            );
-
+	 SET @J = v_sql;
          SET @v_sql = v_sql;
          PREPARE update_stmt from @v_sql;
          EXECUTE update_stmt;   

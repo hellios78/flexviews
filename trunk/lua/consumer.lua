@@ -133,7 +133,7 @@ function table.show(t, name, indent)
 
    name = name or "__unnamed__"
    if type(t) ~= "table" then
-      return name .. " = " .. basicSerialize(t)
+      return name .. " " .. basicSerialize(t)
    end
    cart, autoref = "", ""
    addtocart(t, name, indent)
@@ -144,7 +144,7 @@ end
 function process_binlog(logfile, from_pos, logfile_base) 
 local f = assert(binlog.open(logfile))
 
-local skip_events = false
+local skip_events = true
 
 for event in f:next() do
 	assert(event.timestamp)
@@ -212,21 +212,35 @@ for event in f:next() do
 				-- print("-- logging of events for this table:OFF")
 			end 
 		elseif (event.type == "DELETE_ROWS_EVENT" or event.type == "UPDATE_ROWS_EVENT" or event.type == "WRITE_ROWS_EVENT") then
-			if not skip_events then
-				local tbl = f:table_get(event.rbr.table_id)
+			local tbl = f:table_get(event.rbr.table_id)
 
-				assert(event.rbr.table_id)
-				assert(event.rbr.flags)
+			assert(event.rbr.table_id)
+			assert(event.rbr.flags)
 
-				-- print(("-- RBR: [%s] table=%d (%s), flags=%d"):format(event.type, event.rbr.table_id, tbl.table_name, event.rbr.flags))
+			-- print(("-- RBR: AT:%d [%s] table=%d (%s), flags=%d"):format(event.log_pos,event.type, event.rbr.table_id, tbl.table_name, event.rbr.flags))
 
-				for row in event.rbr:next(tbl) do
+			for row in event.rbr:next(tbl) do
+				if not skip_events then
 					local before = row.before
 					local after  = row.after
-
+					-- print(table.show(before), '','')
 					if (before) then	
 						local field_str = ""		
-						for field_ndx, field in ipairs(before) do
+						if event.type == "WRITE_ROWS_EVENT" then
+							dml_type = 1
+						else 
+							dml_type = -1
+						end 
+						last_ndx = "";
+						for field_ndx, field in pairs(before) do
+							if last_ndx ~= "" then
+								if tonumber(field_ndx) - tonumber(last_ndx) > 1 then
+									for i = 1, tonumber(field_ndx) - tonumber(last_ndx) - 1 do
+										if field_str ~= "" then field_str = field_str .. ',' end
+										field_str = field_str .. 'NULL'
+									end
+								end
+							end
 							if field_str ~= "" then
 								field_str = field_str .. ','
 							end
@@ -235,22 +249,19 @@ for event in f:next() do
 							else
 								field_str = field_str .. "'" .. field .. "'"
 							end
+							last_ndx = field_ndx
 						end
-						if event.type == "WRITE_ROWS_EVENT" then
-							dml_type = 1
-						else 
-							dml_type = -1
-						end 
-						print(("IN BEFORE FOR %s for EVENT TYPE %s, ASSIGNED TYPE: %d"):format(tbl.table_name, event.type, dml_type))
-						assert(conn:execute(("INSERT INTO %s.%s_mvlog VALUES(%d,@fv_uow_id,%s);"):format(mvlog_db,tbl.table_name,dml_type,field_str)))
+						-- print(("IN BEFORE FOR %s for EVENT TYPE %s, ASSIGNED TYPE: %d"):format(tbl.table_name, event.type, dml_type))
+						-- print((("INSERT INTO %s.%s_mvlog VALUES(%d,@fv_uow_id,@@server_id, %s);"):format(mvlog_db,tbl.table_name,dml_type,field_str)))
+						assert(conn:execute(("INSERT INTO %s.%s_mvlog VALUES(%d,@fv_uow_id,@@server_id, %s);"):format(mvlog_db,tbl.table_name,dml_type,field_str)))
 					end
 					if (after) then
+						local field_str = ""		
 						if event.type == "UPDATE_ROWS_EVENT" then
 							dml_type = 1
 						else 
 							dml_type = -1
 						end 
-						local field_str = ""		
 						for field_ndx, field in ipairs(after) do
 							if field_str ~= "" then
 								field_str = field_str .. ','
@@ -261,17 +272,17 @@ for event in f:next() do
 								field_str = field_str .. "'" .. field .. "'"
 							end
 						end
-						print(("IN AFTER FOR %s for EVENT TYPE %s, ASSIGNED TYPE: %d"):format(tbl.table_name, event.type, dml_type))
-						assert(conn:execute(("INSERT INTO %s.%s_mvlog VALUES(%d,@fv_uow_id,%s);"):format(mvlog_db,tbl.table_name,dml_type,field_str)))
+						-- print(("IN AFTER FOR %s for EVENT TYPE %s, ASSIGNED TYPE: %d"):format(tbl.table_name, event.type, dml_type))
+						-- print((("INSERT INTO %s.%s_mvlog VALUES(%d,@fv_uow_id,@@server_id, %s);"):format(mvlog_db,tbl.table_name,dml_type,field_str)))
+						assert(conn:execute(("INSERT INTO %s.%s_mvlog VALUES(%d,@fv_uow_id,@@server_id, %s);"):format(mvlog_db,tbl.table_name,dml_type,field_str)))
 					end
-
 				end
 			end
 		else
 			-- dump the unknown event to make it easier to add a decoder for them
 			print(("-- unknown-event: %d, %d, %s"):format(event.timestamp, event.server_id, event.type))
 		end
-               	sql = ("UPDATE flexviews.binlog_consumer_status set exec_master_pos = %d where master_log_file = '%s';"):format(event.log_pos,logfile_base)
+               	sql = ("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s';"):format(event.log_pos,logfile_base)
 		assert(conn:execute(sql))
 
 	end
@@ -290,7 +301,7 @@ cur = assert (conn:execute"SHOW BINARY LOGS;")
 -- print all rows, the rows will be indexed by field names
 row = cur:fetch ({}, "n")
 while row do
-  assert(conn:execute(string.format("INSERT INTO flexviews.binlog_consumer_status (master_log_file, master_log_size, exec_master_pos) values ('%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", row[1], row[2], row[2])))
+  assert(conn:execute(string.format("INSERT INTO flexviews.binlog_consumer_status (master_log_file, master_log_size, exec_master_log_pos) values ('%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", row[1], row[2], row[2])))
 
   sql = string.format("INSERT INTO log_list (log_name) values ('%s')  ;", row[1])
   assert(conn:execute(sql))
@@ -310,7 +321,7 @@ assert(conn:execute("DROP TEMPORARY table log_list"))
 
 
 -- retrieve a cursor
-cur = assert (conn:execute"SELECT bcs.*, setting_value from flexviews.binlog_consumer_status bcs join flexviews.mview_settings where setting_key ='log_bin' and exec_master_pos < master_log_size order by master_log_file;")
+cur = assert (conn:execute"SELECT bcs.*, setting_value from flexviews.binlog_consumer_status bcs join flexviews.mview_settings where setting_key ='log_bin' and exec_master_log_pos < master_log_size order by master_log_file;")
 -- print all rows, the rows will be indexed by field names
 row = cur:fetch ({}, "n")
 while row do
