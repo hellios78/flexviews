@@ -31,6 +31,7 @@ CREATE TABLE `mview` (
   `incremental_hwm` bigint(20) default NULL,
   `refreshed_to_uow_id` bigint(20) default NULL,
   `parent_mview_id` int null, 
+  `created_at_signal_id` bigint null,
   PRIMARY KEY  (`mview_id`),
   UNIQUE KEY `mview_name` (`mview_name`,`mview_schema`)
 ) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=latin1;

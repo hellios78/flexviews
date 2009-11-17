@@ -114,18 +114,26 @@ END IF;
     -- WHERE PROPAGATE CHANGES ARE APPLIED, THEN THE REFRESH PROCESS
     -- APPLIES THE DELTAS TO THE MV 
     IF v_mview_refresh_type = 'INCREMENTAL' THEN
-      UPDATE flexviews.mview
-         SET mview_last_refresh = @tstamp,
-             incremental_hwm = flexviews.uow_from_dtime(@tstamp),
-             refreshed_to_uow_id = incremental_hwm,
-             mview_enabled = 1
-       WHERE mview_id = v_mview_id;
-
       SET v_sql = CONCAT('DROP TABLE IF EXISTS ', v_mview_schema, '.', v_mview_name, '_delta');
       SET @v_sql = v_sql;  
       PREPARE drop_stmt FROM @v_sql;
       EXECUTE drop_stmt;
       DEALLOCATE PREPARE drop_stmt;
+
+      -- We must use the signal table to determine the actual UOW_ID
+      -- to which this view was actually created
+      INSERT INTO flexviews.mview_signal(signal_id) values (NULL);
+      SET @signal_id := LAST_INSERT_ID();
+
+      UPDATE flexviews.mview
+         SET mview_last_refresh = NULL,  -- @tstamp,
+             incremental_hwm = NULL,     -- flexviews.uow_from_dtime(@tstamp),
+             refreshed_to_uow_id = NULL, -- incremental_hwm,
+             mview_enabled = 1, 
+             created_at_signal_id = @signal_id
+       WHERE mview_id = v_mview_id;
+    
+      SET @signal_id := NULL;
 
       SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,KEY(uow_id))', char(10));
       SET v_sql = CONCAT(v_sql, 'ENGINE=INNODB ');
