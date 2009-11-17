@@ -85,7 +85,7 @@ SELECT mview_refresh_type,
 
 SET @min_uow_id := NULL;
 
-IF NOT IS NULL v_signal_id AND v_refreshed_to_uow_id IS NULL THEN
+IF v_signal_id IS NOT NULL AND v_refreshed_to_uow_id IS NULL THEN
   START TRANSACTION;
 
   SELECT uow_id
@@ -96,7 +96,7 @@ IF NOT IS NULL v_signal_id AND v_refreshed_to_uow_id IS NULL THEN
    
    UPDATE flexviews.mview mv
      JOIN flexviews.mview_uow uow
-    WHERE uow.uow_id = v_refreshed_to_uow_id
+       ON uow.uow_id = v_refreshed_to_uow_id
       AND mv.mview_id = v_mview_id
       SET refreshed_to_uow_id = uow.uow_id,
           incremental_hwm = uow.uow_id,
@@ -190,12 +190,12 @@ IF TRUE THEN
      DECLARE v_agg_set TEXT;
 
        IF v_child_mview_id IS NOT NULL THEN
-       	 CALL flexviews.apply_delta(v_child_mview_id, v_current_uow_id);
-
          UPDATE flexviews.mview
             SET refreshed_to_uow_id = v_current_uow_id, 
                 mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
           WHERE mview_id = v_child_mview_id;
+
+       	 CALL flexviews.apply_delta(v_child_mview_id, v_current_uow_id);
 
 	 SELECT CONCAT(mview_schema, '.', mview_name)
            INTO v_child_mview_name
@@ -227,22 +227,16 @@ IF TRUE THEN
          PREPARE update_stmt from @v_sql;
          EXECUTE update_stmt;   
          DEALLOCATE PREPARE update_stmt;
+      END IF;
+      UPDATE flexviews.mview
+         SET refreshed_to_uow_id = v_current_uow_id, 
+             mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
+       WHERE mview_id = v_mview_id;
 
-         CALL flexviews.apply_delta(v_mview_id, v_current_uow_id);
+      CALL flexviews.apply_delta(v_mview_id, v_current_uow_id);
                             
-       ELSE
-         -- Just update the one view if there is no dependent view
-         CALL flexviews.apply_delta(v_mview_id, v_current_uow_id);
-       END IF;
-
-       UPDATE flexviews.mview
-          SET refreshed_to_uow_id = v_current_uow_id, 
-              mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
-        WHERE mview_id = v_mview_id;
-
-     END;
-   END IF;
-
+    END;
+  END IF;
  ELSE
    CALL flexviews.signal(' XYZ UNSUPPORTED REFRESH METHOD'); 
  END IF;
