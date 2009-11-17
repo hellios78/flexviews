@@ -41,6 +41,8 @@ DECLARE v_child_mview_id INT DEFAULT NULL;
 
 DECLARE v_sql TEXT DEFAULT '';
 
+DECLARE v_signal_id BIGINT DEFAULT NULL;
+
 DECLARE v_mview_schema TEXT;
 DECLARE v_mview_name TEXT;
 
@@ -68,17 +70,59 @@ SELECT mview_refresh_type,
        refreshed_to_uow_id,
        mview_refresh_period,
        mview_schema, 
-       mview_name
+       mview_name,
+       created_at_signal_id
   INTO v_mview_refresh_type,
        v_mview_last_refresh,
        v_incremental_hwm,
        v_refreshed_to_uow_id,
        v_mview_refresh_period, 
        v_mview_schema, 
-       v_mview_name
+       v_mview_name,
+       v_signal_id
   FROM flexviews.mview
  WHERE mview_id = v_mview_id;
 
+SET @min_uow_id := NULL;
+
+IF NOT IS NULL v_signal_id AND v_refreshed_to_uow_id IS NULL THEN
+  START TRANSACTION;
+
+  SELECT uow_id
+    INTO v_refreshed_to_uow_id
+    FROM flexviews.mview_signal_mvlog
+   WHERE signal_id = v_signal_id;
+
+   
+   UPDATE flexviews.mview mv
+     JOIN flexviews.mview_uow uow
+    WHERE uow.uow_id = v_refreshed_to_uow_id
+      AND mv.mview_id = v_mview_id
+      SET refreshed_to_uow_id = uow.uow_id,
+          incremental_hwm = uow.uow_id,
+          mview_last_refresh = uow.commit_time; 
+
+   COMMIT;
+
+   -- refresh these variables as they may have been changed by our UPDATE statement
+   SELECT 
+       mview_last_refresh, 
+       incremental_hwm,
+       refreshed_to_uow_id
+  INTO v_mview_last_refresh,
+       v_incremental_hwm,
+       v_refreshed_to_uow_id
+  FROM flexviews.mview
+ WHERE mview_id = v_mview_id;
+
+END IF;
+
+-- EXIT the refresh process if the consumer has not caught up to the point
+-- where the view is possible to be refreshed
+
+IF v_refreshed_to_uow_id IS NULL THEN
+  call flexviews.signal('CONSUMER_IS_BEHIND');
+END IF;
 
 SELECT mview_id
   INTO v_child_mview_id
