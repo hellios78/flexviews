@@ -190,12 +190,12 @@ IF TRUE THEN
      DECLARE v_agg_set TEXT;
 
        IF v_child_mview_id IS NOT NULL THEN
+       	 CALL flexviews.apply_delta(v_child_mview_id, v_current_uow_id);
+
          UPDATE flexviews.mview
-            SET refreshed_to_uow_id = v_current_uow_id, 
-                mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
+            SET mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
           WHERE mview_id = v_child_mview_id;
 
-       	 CALL flexviews.apply_delta(v_child_mview_id, v_current_uow_id);
 
 	 SELECT CONCAT(mview_schema, '.', mview_name)
            INTO v_child_mview_name
@@ -228,12 +228,12 @@ IF TRUE THEN
          EXECUTE update_stmt;   
          DEALLOCATE PREPARE update_stmt;
       END IF;
-      UPDATE flexviews.mview
-         SET refreshed_to_uow_id = v_current_uow_id, 
-             mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
-       WHERE mview_id = v_mview_id;
+
 
       CALL flexviews.apply_delta(v_mview_id, v_current_uow_id);
+      UPDATE flexviews.mview
+         SET mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
+       WHERE mview_id = v_mview_id;
                             
     END;
   END IF;
