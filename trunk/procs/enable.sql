@@ -86,7 +86,7 @@ BEGIN
    ELSE
      CALL flexviews.ensure_validity(v_mview_id);
 
-     SET v_sql = CONCAT(v_sql, 'ENGINE=INNODB ');
+     SET v_sql = CONCAT(v_sql, ' ENGINE=INNODB ');
      SET v_sql = CONCAT(v_sql, 'AS (', char(10));
      SET v_sql = CONCAT(v_sql, flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
      SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
@@ -94,11 +94,12 @@ BEGIN
      	SET v_sql = CONCAT(v_sql, ' WHERE ', flexviews.get_where(v_mview_id), char(10));
      END IF;
 
-     IF flexviews.has_aggregates(v_mview_id) = true THEN
+     -- If there are non-distributive aggregate functions, add a dependent materialization table
+     -- A subview will only be created if necessary
+     CALL flexviews.create_child_views(v_mview_id);
+
+     IF flexviews.get_delta_groupby(v_mview_id) != "" THEN
        SET v_sql = CONCAT(v_sql, char(10), ' GROUP BY ', flexviews.get_delta_groupby(v_mview_id), char(10)); 
-       -- If there are non-distributive aggregate functions, add a dependent materialization table
-       -- A subview will only be created if necessary
-       CALL flexviews.create_child_views(v_mview_id);
      END IF;
      SET v_sql = CONCAT(v_sql, ');');
      SET @v_sql = v_sql;

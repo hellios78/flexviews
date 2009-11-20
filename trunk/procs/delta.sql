@@ -1118,7 +1118,9 @@ IF flexviews.get_where(v_mview_id) != "" THEN
   SET v_sql = CONCAT(v_sql, ' WHERE ' , flexviews.get_where(v_mview_id));
 END IF;
 
-SET v_sql = CONCAT(v_sql, IF(flexviews.has_aggregates(v_mview_id) = true, ' GROUP BY ', ''), flexviews.get_delta_groupby(v_mview_id), ' ');
+IF flexviews.get_delta_groupby(v_mview_id) != "" THEN
+  SET v_sql = CONCAT(v_sql, ' GROUP BY ', flexviews.get_delta_groupby(v_mview_id), ' ');
+END IF;
 
 SET v_sql = CONCAT(v_sql, ' LIMIT 0');
 
