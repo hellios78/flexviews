@@ -151,11 +151,18 @@ ELSE -- this mview has aggregates
      AND mview_expression = '*'
    LIMIT 1; -- use limit just in case there is more than one count(*), though why that would be is beyond me...
 
-  SET v_sql = CONCAT('DELETE ', v_delta_table, '.*, ', v_mview_schema, '.', v_mview_name, '.* ',
-                     '  FROM ',v_delta_table,
-                     '  JOIN ', v_mview_schema, '.', v_mview_name,
-                     ' USING(', flexviews.get_delta_aliases(v_mview_id, '', TRUE), ')',
-                     ' WHERE ', v_mview_name, '.', v_cnt_column, ' + ', v_delta_table, '.',v_cnt_column, '=0');
+  IF flexviews.get_delta_aliases(v_mview_id, '', TRUE) != "" THEN
+    SET v_sql = CONCAT('DELETE ', v_delta_table, '.*, ', v_mview_schema, '.', v_mview_name, '.* ',
+                       '  FROM ',v_delta_table,
+                       '  JOIN ', v_mview_schema, '.', v_mview_name,
+                       ' USING(', flexviews.get_delta_aliases(v_mview_id, '', TRUE), ')',
+                       ' WHERE ', v_mview_name, '.', v_cnt_column, ' + ', v_delta_table, '.',v_cnt_column, '=0');
+  ELSE
+    SET v_sql = CONCAT('DELETE ', v_delta_table, '.*, ', v_mview_schema, '.', v_mview_name, '.* ',
+                       '  FROM ',v_delta_table,
+                       '      ,', v_mview_schema, '.', v_mview_name,
+                       ' WHERE ', v_mview_name, '.', v_cnt_column, ' + ', v_delta_table, '.',v_cnt_column, '=0');
+  END IF;
   CALL flexviews.rlog(v_sql);
   SET @v_sql = v_sql;
   PREPARE delete_stmt FROM @v_sql;
@@ -165,7 +172,8 @@ ELSE -- this mview has aggregates
   SET v_sql = CONCAT('SELECT ', get_delta_aliases(v_mview_id, '', FALSE), ' ',
                      '  FROM ', v_delta_table,
                      ' WHERE uow_id > ', v_refreshed_to_uow_id,
-                     '   AND uow_id <= ', v_until_uow_id);
+                     '   AND uow_id <= ', v_until_uow_id, 
+                     '   AND dml_type IS NOT NULL ');
   SET v_sql = get_insert(v_mview_id, v_sql);
   CALL flexviews.rlog(v_sql);
   SET @v_sql = v_sql;
@@ -331,7 +339,7 @@ SET v_sql = CONCAT( v_sql, ' AND (', v_mview_table_alias, '.dml_type * ', v_meth
                     '\n UNION ALL \n', 
                     v_sql, ' AND (', v_mview_table_alias, '.dml_type * ', v_method, ' = -1)', v_group_clause);
 END IF;
-SET v_sql = CONCAT('INSERT INTO ', v_delta_table, ' ', v_sql);
+SET v_sql = CONCAT('INSERT INTO ', v_delta_table, '  SELECT * from (', v_sql, ' ) x_select_ where x_select_.dml_type is not null ');
 CALL flexviews.rlog(CONCAT('Query: ', v_sql));
 
 /*
