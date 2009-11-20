@@ -15,8 +15,16 @@
     the GPL (the LGPL) in COPYING.LESSER.  
     If not, see <http://www.gnu.org/licenses/>.
 
-Please visit http://flexviews.sourceforge.net and download the example data for instructions.
 
-I will have a full readme someday, really I will.
+Welcome to Flexviews!
 
+Flexviews is a unique toolkit for the creation and upkeep of MATERIALIZED VIEWS for MySQL.
+
+My first experience with materialized views was with Oracle 8i.  When my career went in a MySQL direction, the thing I missed most from Oracle was view materialization.  I realised after a few years that my vision of materialized views would likely never make its way into the core MySQL server any time in the near future.
+
+Flexviews supports SELECT-PROJECT-JOIN queries leveraging the algorithm described in 'How to roll a join': http://portal.acm.org/citation.cfm?id=335393 (2000)
+Flexviews extends this algorithm to distributive aggregate functions with 'summary delta tables' as descbribed in: http://portal.acm.org/citation.cfm?id=253260.253277 (1997)
+Flexviews combines both ideas to support non-distributable aggregate functions such as MIN/MAX/COUNT(DISTINCT) by trading space-for-time using a secondary summary table, though this could be handled better with transparent query rewrite.
+
+Many thanks to the authors.
 
