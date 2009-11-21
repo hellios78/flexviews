@@ -71,6 +71,7 @@ USE flexviews;
 \. ./procs/signal.sql
 \. ./procs/uow.sql
 \. ./procs/get_setting.sql
+\. ./procs/fvrand.sql
 
 CALL flexviews.uow_start(@uow_id);
 
