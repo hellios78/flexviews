@@ -107,3 +107,26 @@ CREATE TABLE `mview_signal` (
   `signal_time` TIMESTAMP,
   primary key(signal_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+DROP TABLE IF EXISTS `mview_compute_schedule`;
+
+CREATE TABLE `mview_compute_schedule` (
+  `mview_id` int(11) NOT NULL,
+  `compute_interval_seconds` int(11) DEFAULT NULL,
+  `last_computed_at` datetime DEFAULT NULL,
+  `last_compute_elapsed_seconds` int(11) DEFAULT '0',
+  PRIMARY KEY (`mview_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+DROP TABLE IF EXISTS `mview_apply_schedule`;
+CREATE TABLE `mview_apply_schedule` (
+  `mview_id` int(11) NOT NULL,
+  `apply_interval_seconds` int(11) DEFAULT NULL,
+  `apply_to_type` enum('now','last_hour') DEFAULT NULL,
+  `last_apply_elapsed_seconds` int(11) DEFAULT '0',
+  `last_applied_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`mview_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+
+
