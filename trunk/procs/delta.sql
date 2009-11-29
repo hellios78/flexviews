@@ -64,7 +64,6 @@ END IF;
 
 IF NOT flexviews.has_aggregates(v_mview_id) THEN
   -- PROCESS INSERTS --
-  CALL flexviews.rlog(' -- first the inserts');
   SET v_sql = CONCAT('INSERT INTO ',
       v_mview_schema, '.', v_mview_name,
       ' SELECT ', flexviews.get_delta_aliases(v_mview_id,'',FALSE), 
@@ -81,9 +80,6 @@ IF NOT flexviews.has_aggregates(v_mview_id) THEN
   -- DONE WITH INSERTS --
 
   -- DELETE TUPLES FROM THE MV 
-  CALL flexviews.rlog(
-    'DROP TEMPORARY TABLE IF EXISTS deletes;'
-  );
   DROP TEMPORARY TABLE IF EXISTS deletes;
 
   SET v_sql = CONCAT("CREATE TEMPORARY TABLE deletes ",
@@ -105,7 +101,6 @@ IF NOT flexviews.has_aggregates(v_mview_id) THEN
 
   IF v_row_count > 0 AND v_row_count IS NOT NULL THEN
 
-    CALL flexviews.rlog(CONCAT('-- Entering delete loop: ', v_row_count, ' rows to delete'));
     -- MySQL does not support JOIN w/ LIMIT in a DELETE 
     -- statement.  We are going to work around it with
     -- a session variable.
@@ -194,11 +189,6 @@ DROP TEMPORARY TABLE IF EXISTS deletes;
   DEALLOCATE PREPARE delete_stmt;
 
   -- UPDATE TABLE TO INDICATE WE HAVE REFRESHED--
-
-  CALL flexviews.rlog(
-  CONCAT('UPDATE flexviews.mview SET refreshed_to_uow_id = v_until_uow_id
-   WHERE mview_id =', v_mview_id,';'));
-
   UPDATE flexviews.mview
      SET refreshed_to_uow_id = IF(v_until_uow_id > incremental_hwm, incremental_hwm, v_until_uow_id)
    WHERE mview_id = v_mview_id;
@@ -282,65 +272,47 @@ DECLARE v_sql TEXT default '';
 DECLARE v_mview_table_alias TEXT;
 DECLARE v_delta_table TEXT;
 
-CALL flexviews.rlog('EnterProcedure: execute_refresh_step');
-CALL flexviews.rlog(CONCAT('InParam: v_mview_id = ', v_mview_id));
-CALL flexviews.rlog(CONCAT('InParam: v_depth = ', v_depth)); 
-CALL flexviews.rlog(CONCAT('InParam: v_method = ', v_method));
-CALL flexviews.rlog(CONCAT('InOutParam: v_uow_id = ', IFNULL(v_uow_id,'NULL')));
-
--- CALL flexviews.uow_start(v_uow_id);
-CALL flexviews.rlog(CONCAT('CallCompleted: uow_start'));
-CALL flexviews.rlog(CONCAT('OutParam: v_uow_id= ', v_uow_id));
-
-CALL flexviews.rlog('Query: SELECT INTO v_delta_table');
 SELECT CONCAT(mview_schema, '.', mview_name, '_delta')
   INTO v_delta_table
   FROM flexviews.mview
  WHERE mview_id = v_mview_id;
 
-CALL flexviews.rlog('Query: SELECT INTO v_mview_table_alias');
 SELECT mview_table_alias
   INTO v_mview_table_alias
   FROM flexviews.mview_table
  WHERE mview_table_id = v_mview_table_id;
 
-CALL flexviews.rlog(CONCAT('CALL: flexviews.get_delta_where(', v_mview_id, ',', v_depth, ')'));
 SET v_where_clause = CONCAT('WHERE ', flexviews.get_delta_where(v_mview_id, v_depth));
 SET @delta_where = v_where_clause;
 
-CALL flexviews.rlog(CONCAT('CallCompleted: get_delta_where'));
-CALL flexviews.rlog(CONCAT('ReturnValue:',  IFNULL(v_where_clause,'NULL')));
 
-CALL flexviews.rlog(CONCAT('CALL: flexviews.get_delta_groupby(', v_mview_id, ')'));
 SET v_group_clause = flexviews.get_delta_groupby(v_mview_id);
 IF v_group_clause != '' THEN
   SET v_group_clause = CONCAT(' GROUP BY ', v_group_clause);
 END IF;
 
-CALL flexviews.rlog(CONCAT('CallCompleted: get_delta_groupby'));
-CALL flexviews.rlog(CONCAT('ReturnValue:',  IFNULL(v_group_clause,'NULL')));
 
-CALL flexviews.rlog(CONCAT('CALL: flexviews.get_delta_select(', v_mview_id, ',', v_method, ',', v_mview_table_id, ')'));
 SET v_select_clause = flexviews.get_delta_select(v_mview_id, v_method, v_mview_table_id);
 SET @delta_select = v_select_clause;
 SET v_select_clause = CONCAT('SELECT (', v_mview_table_alias, '.dml_type * ', v_method, ') as dml_type,', flexviews.get_delta_least_uowid(v_depth), ' as uow_id, ', v_select_clause);
 
-CALL flexviews.rlog(CONCAT('CallCompleted: get_delta_select'));
-CALL flexviews.rlog(CONCAT('ReturnValue:',  IFNULL(v_select_clause,'NULL')));
 
-CALL flexviews.rlog(CONCAT('CALL: get_delta_from(', v_depth, ')'));
 SET v_from_clause = flexviews.get_delta_from(v_depth);
 
 SET v_sql = CONCAT(v_select_clause, '\n', v_from_clause, '\n', v_where_clause); 
 
-IF flexviews.has_aggregates(v_mview_id) THEN
-CALL flexviews.rlog('Info: mview has aggregates, construct union');
-SET v_sql = CONCAT( v_sql, ' AND (', v_mview_table_alias, '.dml_type * ', v_method, ' = 1)', v_group_clause, ' ',
+IF v_group_clause != "" THEN
+  SET v_sql = CONCAT( v_sql, ' AND (', v_mview_table_alias, '.dml_type * ', v_method, ' = 1)', v_group_clause, ' ',
                     '\n UNION ALL \n', 
                     v_sql, ' AND (', v_mview_table_alias, '.dml_type * ', v_method, ' = -1)', v_group_clause);
+
+  SET v_sql = CONCAT('INSERT INTO ', v_delta_table, '  SELECT * from (', v_sql, ' ) x_select_ where x_select_.dml_type is not null ');
+ELSE
+  SET v_sql = CONCAT('INSERT INTO ', v_delta_table, ' ', v_sql);
 END IF;
-SET v_sql = CONCAT('INSERT INTO ', v_delta_table, '  SELECT * from (', v_sql, ' ) x_select_ where x_select_.dml_type is not null ');
-CALL flexviews.rlog(CONCAT('Query: ', v_sql));
+ 
+
+CALL flexviews.rlog(v_sql);
 
 /*
 SET @v_sql = v_sql;
@@ -389,7 +361,6 @@ IF v_start_uow_id IS NULL THEN
   SET @__ = 0;
 
 ELSE
-  CALL flexviews.rlog('Note: Setting up data structures');
   -- else set up the data structures we need if this is first invocation
 
   DROP TEMPORARY TABLE IF EXISTS flexviews.table_list;
@@ -399,7 +370,6 @@ ELSE
   SET @__compute_delta_depth = 1;
 
  
-  CALL flexviews.rlog('CreateTmp: flexviews.table_list');
   CREATE TEMPORARY TABLE flexviews.table_list (
     mview_table_id INT,
              depth TINYINT,
@@ -410,11 +380,9 @@ ELSE
   ) ENGINE=MEMORY;
 
 
-  CALL flexviews.rlog('CreateTmp: flexviews.table_list_old');
   CREATE TEMPORARY TABLE flexviews.table_list_old 
     LIKE flexviews.table_list;
   
-  CALL flexviews.rlog('Populate: flexviews.table_list');
   INSERT INTO flexviews.table_list
   SELECT mview_table_id, 
          @__compute_delta_depth,
@@ -442,7 +410,6 @@ END IF;  -- setup complete
 
 -- We update the values in table_list.
 -- We need to restore the originals so save them.
-CALL flexviews.rlog('Cleanup: table_list_old');
 DELETE FROM flexviews.table_list_old WHERE depth >= @__compute_delta_depth;
 INSERT INTO flexviews.table_list_old 
 SELECT * 
@@ -451,17 +418,14 @@ SELECT *
 
 -- execute one query for v_cur_base_table_num = 1 to v_table_count
 -- recurse to execute compensation queries for each base table query
-CALL flexviews.rlog('IterateLoop: considerRelationLoop');
 considerRelationLoop: LOOP
   SET v_consider_base_table_num = v_consider_base_table_num + 1;
 
   IF v_consider_base_table_num > v_table_count THEN
-    CALL flexviews.rlog('LeaveLoop: considerRelationLoop');
     LEAVE considerRelationLoop;
   END IF;
 
   IF v_consider_base_table_num > 1 THEN
-    CALL flexviews.rlog('Cleanup: table_list');
     DELETE FROM flexviews.table_list where depth >= @__compute_delta_depth;
     INSERT INTO flexviews.table_list 
     SELECT * 
@@ -485,13 +449,10 @@ considerRelationLoop: LOOP
     IF v_uow_start < v_until_uow_id THEN 
       SET v_base_table_num = 0;
       baseRelationLoop: LOOP
-        CALL flexviews.rlog('IterateLoop: baseRelationLoop');         
         SET v_base_table_num = v_base_table_num + 1;
         IF v_base_table_num > v_table_count THEN
-          CALL flexviews.rlog('LeaveLoop: baseRelationLoop');         
           LEAVE baseRelationLoop;
         END IF;
-	CALL flexviews.rlog('Query: Get uow_id values');
         SELECT uow_id_start, 
                uow_id_end
           INTO v_uow_start, 
@@ -502,7 +463,6 @@ considerRelationLoop: LOOP
 
 	IF v_uow_end IS NULL THEN
 	  IF v_base_table_num < v_consider_base_table_num THEN
-                CALL flexviews.rlog('Query: UPDATE table_list (v_base_table_num < v_consider_base_table_num)');
              	UPDATE flexviews.table_list
                    SET uow_id_start = v_uow_start,
                        uow_id_end = NULL
@@ -511,7 +471,6 @@ considerRelationLoop: LOOP
 
             
           ELSEIF v_base_table_num = v_consider_base_table_num THEN
-                CALL flexviews.rlog('Query: UPDATE table_list (v_base_table_num = v_consider_base_table_num)');
  		UPDATE flexviews.table_list
                    SET uow_id_start = v_uow_start,
                        uow_id_end = v_until_uow_id
@@ -520,7 +479,6 @@ considerRelationLoop: LOOP
 
 
           ELSE
-                CALL flexviews.rlog('Query: UPDATE table_list (v_base_table_num > v_consider_base_table_num)');
              	UPDATE flexviews.table_list
                    SET uow_id_start = v_until_uow_id,
                        uow_id_end = NULL
@@ -530,7 +488,6 @@ considerRelationLoop: LOOP
           END IF;
         END IF;
       END LOOP baseRelationLoop; 
-      CALL flexviews.rlog('LoopConclude: baseRelationLoop');
       SET @EXEC=@EXEC + 1;
       
      
@@ -538,11 +495,8 @@ considerRelationLoop: LOOP
       -- for this step of the refresh plan
 
       CALL flexviews.execute_refresh_step(v_mview_id, @__compute_delta_depth, v_method, v_mview_table_id,v_exec_uow_id);
-      CALL flexviews.rlog(CONCAT('CallCompleted: execute_refresh_step'));
-      CALL flexviews.rlog(CONCAT('InOutParam: v_exec_uow_id = ', IFNULL(v_exec_uow_id,'NULL')));
 
       -- if any base tables remain in the SQL for the current depth
-      CALL flexviews.rlog('Query: evaluate recursion decision');
       SELECT IFNULL(COUNT(*),0) 
         INTO v_recurse
         FROM flexviews.table_list
@@ -550,7 +504,6 @@ considerRelationLoop: LOOP
          AND uow_id_end IS NULL;
       
       IF v_recurse != 0  THEN
-        CALL flexviews.rlog('CreateTmp: x');
         CREATE TEMPORARY TABLE x as 
         (SELECT mview_table_id,
                 depth+1, 
@@ -559,16 +512,11 @@ considerRelationLoop: LOOP
                 idx
            FROM flexviews.table_list
           WHERE depth = @__compute_delta_depth);
-        CALL flexviews.rlog('Query: modify table_list for recursion');
         REPLACE INTO flexviews.table_list
         SELECT * FROM x;
-        CALL flexviews.rlog('DropTmp: x'); 
         DROP TEMPORARY TABLE x;
         
         -- recurse to compensate, so multiply v_method * -1
-        CALL flexviews.rlog(
-          CONCAT('CALL flexviews.execute_refresh(', v_mview_id, ', NULL, ', v_exec_uow_id, ',', -v_method, ');')
-        );
         CALL flexviews.execute_refresh(v_mview_id, NULL, v_exec_uow_id, -v_method);
         
       END IF;
