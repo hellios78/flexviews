@@ -72,8 +72,12 @@ BEGIN
   -- This will allow weird constructs like mvlogs on mvlogs, though I can't think of a good reason for
   -- such constructs.  It isn't possible to put mvlogs on almost any internal Flexviews table because
   -- almost all the tables contain uow_id.  mview_signal is an exception.
+
+  IF TRIM(v_sql) = "" THEN
+    CALL flexviews.signal('TABLE NOT EXISTS OR ACCESS DENIED');
+  END IF; 
   SET v_sql = CONCAT('CREATE TABLE ', flexviews.get_setting('mvlog_db'), '.', v_table_name, '_mvlog', 
-                 '( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', v_sql, 'KEY(uow_id) ) ENGINE=INNODB');
+                 '( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
    
   SET @v_sql = v_sql;
   PREPARE create_stmt from @v_sql;
