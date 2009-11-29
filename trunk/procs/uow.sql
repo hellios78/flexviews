@@ -63,7 +63,6 @@ startUOW:WHILE (1) DO
     LEAVE startUOW;
   END IF;
 END WHILE;
-CALL flexviews.rlog(CONCAT('OutParam: v_uow_id = ', v_uow_id)); 
 
 END ;;
 
