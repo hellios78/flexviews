@@ -159,7 +159,6 @@ IF TRUE THEN
 
    -- this will recursively populate the materialized view delta table
    IF v_mode = 'BOTH' OR v_mode = 'COMPUTE' THEN
-     CALL flexviews.rlog(CONCAT('-- START PROPAGATE\nCALL flexviews.execute_refresh(', v_mview_id, ',', v_incremental_hwm, ',', v_current_uow_id, ',1);'));
      IF v_child_mview_id IS NOT NULL THEN
        BEGIN
        DECLARE v_incremental_hwm BIGINT;
@@ -172,18 +171,28 @@ IF TRUE THEN
            FROM mview
           WHERE mview_id = v_child_mview_id;
 
-          CALL flexviews.execute_refresh(v_child_mview_id, v_incremental_hwm, v_current_uow_id, 1);
+         SET @now := UNIX_TIMESTAMP(NOW());
+         CALL flexviews.execute_refresh(v_child_mview_id, v_incremental_hwm, v_current_uow_id, 1);
+         SET @compute_time = UNIX_TIMESTAMP(NOW()) - @now;
+
+         UPDATE flexviews.mview_compute_schedule
+            SET last_computed_at = now(),
+                last_compute_elapsed_seconds = @compute_time
+          WHERE mview_id = v_mview_id;
+
         END;
      END IF;
+     SET @now := UNIX_TIMESTAMP(NOW());
      CALL flexviews.execute_refresh(v_mview_id, v_incremental_hwm, v_current_uow_id, 1);    
-     CALL flexviews.rlog('-- END PROPAGATE');
+     SET @compute_time = UNIX_TIMESTAMP(NOW()) - @now;
+     UPDATE flexviews.mview_compute_schedule
+        SET last_computed_at = now(),
+            last_compute_elapsed_seconds = @compute_time
+      WHERE mview_id = v_mview_id;
    END IF;  
 
    IF v_mode = 'BOTH' OR v_mode = 'APPLY' THEN
      -- this will apply unapplied deltas up to v_current_uow_id
-     CALL flexviews.rlog(CONCAT('-- START APPLY\n',
-       CONCAT('CALL flexviews.apply_delta(', v_mview_id, ',', v_current_uow_id, ');')
-     ));
 
      BEGIN 
      DECLARE v_child_mview_name TEXT;
@@ -195,6 +204,11 @@ IF TRUE THEN
          UPDATE flexviews.mview
             SET mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
           WHERE mview_id = v_child_mview_id;
+
+      UPDATE flexviews.mview_apply_schedule
+         SET last_applied_at = now(),
+             last_apply_elapsed_seconds = @compute_time
+       WHERE mview_id = v_mview_id;
 
 
 	 SELECT CONCAT(mview_schema, '.', mview_name)
@@ -229,10 +243,17 @@ IF TRUE THEN
          DEALLOCATE PREPARE update_stmt;
       END IF;
 
-
+      SET @now := UNIX_TIMESTAMP(NOW());
       CALL flexviews.apply_delta(v_mview_id, v_current_uow_id);
+      SET @compute_time = UNIX_TIMESTAMP(NOW()) - @now;
+
       UPDATE flexviews.mview
          SET mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
+       WHERE mview_id = v_mview_id;
+   
+      UPDATE flexviews.mview_apply_schedule
+         SET last_applied_at = now(),
+             last_apply_elapsed_seconds = @compute_time
        WHERE mview_id = v_mview_id;
                             
     END;
