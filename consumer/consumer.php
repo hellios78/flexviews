@@ -1,10 +1,17 @@
 #!/usr/local/bin/php
 <?php
+
+if(!empty($argv[1])) {
+  $iniFile = $argv[1];
+} else {
+  $iniFile = "./consumer.ini";
+}
+
 error_reporting(E_ALL);
 
 $mvlogList = array();
 
-$settings=parse_ini_file('consumer.ini',true);
+$settings=@parse_ini_file($iniFile,true) or die("Could not read ini file: $iniFile\n");
 if(!$settings || empty($settings['flexviews'])) {
   die("Could not find [flexviews] section or .ini file not found");
 }
