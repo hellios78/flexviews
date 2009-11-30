@@ -16,49 +16,55 @@ if(!empty($settings['flexviews']['mysqlbinlog'])) {
 	$cmdLine = 'mysqlbinlog';
 }
 
-foreach($settings['consumer'] as $k => $v) {
+foreach($settings['dest'] as $k => $v) {
   $cmdLine .= " --$k=$v";
 }
 
-$S = $settings['consumer'];
+$S = $settings['source'];
+$D = $settings['dest'];
 
-$conn = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password']) or die('Could not connect to MySQL server:' . mysql_error());
-mysql_query("USE flexviews",$conn);
-mysql_query("BEGIN;", $conn) or die(mysql_error());
-mysql_query("CREATE TEMPORARY table flexviews.log_list (log_name char(50), primary key(log_name))",$conn) or die(mysql_error());
+$source = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password']) or die('Could not connect to MySQL server:' . mysql_error());
+$dest = mysql_connect($D['host'] . ':' . $D['port'], $D['user'], $D['password']) or die('Could not connect to MySQL server:' . mysql_error());
+mysql_query("USE flexviews",$dest);
+mysql_query("BEGIN;", $dest) or die(mysql_error());
+mysql_query("CREATE TEMPORARY table flexviews.log_list (log_name char(50), primary key(log_name))",$dest) or die(mysql_error());
 
-$stmt = mysql_query("SET SQL_LOG_BIN=0");
+$sql = "SELECT @@server_id";
+$stmt = mysql_query($sql, $source);
+$row = mysql_fetch_array($stmt) or die($sql . "\n" . mysql_error() . "\n");
+$serverId = $row[0];
+
+$stmt = mysql_query("SET SQL_LOG_BIN=0", $dest);
 if(!$stmt) die(mysql_error());
 
-$stmt = mysql_query("SHOW BINARY LOGS");
+/* RUN THIS ON THE SOURCE DATABASE*/
+$stmt = mysql_query("SHOW BINARY LOGS", $source);
 if(!$stmt) die(mysql_error());
 
 while($row = mysql_fetch_array($stmt)) {
-  $sql = sprintf("INSERT INTO flexviews.binlog_consumer_status (server_id, master_log_file, master_log_size, exec_master_log_pos) values (@@server_id, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $row['Log_name'], $row['File_size'], $row['File_size']);
+  $sql = sprintf("INSERT INTO flexviews.binlog_consumer_status (server_id, master_log_file, master_log_size, exec_master_log_pos) values ($serverId, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $row['Log_name'], $row['File_size'], $row['File_size']);
 
-  mysql_query($sql, $conn) or die($sql . "\n" . mysql_error() . "\n");
+  mysql_query($sql, $dest) or die($sql . "\n" . mysql_error() . "\n");
 
   $sql = sprintf("INSERT INTO log_list (log_name) values ('%s')", $row[0]);
-  mysql_query($sql, $conn) or die($sql . "\n" . mysql_error() . "\n");
+  mysql_query($sql, $dest) or die($sql . "\n" . mysql_error() . "\n");
 }
-mysql_query("commit", $conn) or die("could not commit\n" . mysql_error() . "\n");
+mysql_query("commit", $dest) or die("could not commit\n" . mysql_error() . "\n");
 
 // TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
-$sql = "DELETE bcs.* FROM flexviews.binlog_consumer_status bcs where server_id=@@server_id AND master_log_file not in (select log_name from log_list)";
-mysql_query($sql, $conn) or die($sql . "\n" . mysql_error() . "\n");
+$sql = "DELETE bcs.* FROM flexviews.binlog_consumer_status bcs where server_id=$serverId AND master_log_file not in (select log_name from log_list)";
+mysql_query($sql, $dest) or die($sql . "\n" . mysql_error() . "\n");
 
 $sql = "DROP TEMPORARY table log_list";
-mysql_query($sql, $conn) or die("Could not drop TEMPORARY TABLE log_list\n");
+mysql_query($sql, $dest) or die("Could not drop TEMPORARY TABLE log_list\n");
 
-
-
-$sql = "SELECT bcs.* from flexviews.binlog_consumer_status bcs where server_id=@@server_id AND exec_master_log_pos < master_log_size order by master_log_file;";
+$sql = "SELECT bcs.* from flexviews.binlog_consumer_status bcs where server_id=$serverId AND exec_master_log_pos < master_log_size order by master_log_file;";
 
 #get the list of tables to mvlog from the database
 refresh_mvlog_cache();
 
 echo " -- Finding binary logs to process\n";
-$stmt = mysql_query($sql, $conn) or die($sql . "\n" . mysql_error() . "\n");
+$stmt = mysql_query($sql, $dest) or die($sql . "\n" . mysql_error() . "\n");
 while($row = mysql_fetch_assoc($stmt)) {
 
   if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;

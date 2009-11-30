@@ -2,6 +2,6 @@
 while [ 1 ]
 do
 	php consumer.php
-        sleep 1
+        usleep 500000 
 done
 
