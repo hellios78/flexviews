@@ -1,4 +1,4 @@
-#!/usr/bin/php
+#!/usr/local/bin/php
 <?php
 error_reporting(E_ALL);
 
@@ -34,16 +34,17 @@ $stmt = mysql_query("SHOW BINARY LOGS");
 if(!$stmt) die(mysql_error());
 
 while($row = mysql_fetch_array($stmt)) {
+  $sql = sprintf("INSERT INTO flexviews.binlog_consumer_status (server_id, master_log_file, master_log_size, exec_master_log_pos) values (@@server_id, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $row['Log_name'], $row['File_size'], $row['File_size']);
 
-  $sql = sprintf("INSERT INTO flexviews.binlog_consumer_status (master_log_file, master_log_size, exec_master_log_pos) values ('%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $row[0], $row[1], $row[1]);
   mysql_query($sql, $conn) or die($sql . "\n" . mysql_error() . "\n");
 
   $sql = sprintf("INSERT INTO log_list (log_name) values ('%s')", $row[0]);
   mysql_query($sql, $conn) or die($sql . "\n" . mysql_error() . "\n");
 }
+mysql_query("commit", $conn) or die("could not commit\n" . mysql_error() . "\n");
 
 // TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
-$sql = "DELETE bcs.* FROM flexviews.binlog_consumer_status bcs where master_log_file not in (select log_name from log_list)";
+$sql = "DELETE bcs.* FROM flexviews.binlog_consumer_status bcs where server_id=@@server_id AND master_log_file not in (select log_name from log_list)";
 mysql_query($sql, $conn) or die($sql . "\n" . mysql_error() . "\n");
 
 $sql = "DROP TEMPORARY table log_list";
@@ -51,20 +52,20 @@ mysql_query($sql, $conn) or die("Could not drop TEMPORARY TABLE log_list\n");
 
 
 
-$sql = "SELECT bcs.* from flexviews.binlog_consumer_status bcs where exec_master_log_pos < master_log_size order by master_log_file;";
+$sql = "SELECT bcs.* from flexviews.binlog_consumer_status bcs where server_id=@@server_id AND exec_master_log_pos < master_log_size order by master_log_file;";
 
 #get the list of tables to mvlog from the database
 refresh_mvlog_cache();
 
 echo " -- Finding binary logs to process\n";
 $stmt = mysql_query($sql, $conn) or die($sql . "\n" . mysql_error() . "\n");
-while($row = mysql_fetch_array($stmt)) {
-  if ($row[2] < 4) $row[2] = 4;
-  $execCmdLine = sprintf("%s -v -R --start-position=%d --stop-position=%d %s", $cmdLine, $row[2], $row[1], $row[0]);
-  echo sprintf(" -- PROCESS BINARY LOG: %s, size:%d, exec_at:%d, exec_to:%d\n", $row[0], $row[1], $row[2], $row[1]);
+while($row = mysql_fetch_assoc($stmt)) {
+
+  if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;
+  $execCmdLine = sprintf("%s -v -R --start-position=%d --stop-position=%d %s", $cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
   echo  "-- $execCmdLine\n";
   $proc = popen($execCmdLine, "r");
-  process_binlog($proc, $row[0]);
+  process_binlog($proc, $row['master_log_file']);
   pclose($proc);
 }
 
@@ -126,7 +127,7 @@ function process_binlog($proc,$logName) {
         }
       }else {
           if(preg_match('/\s+end_log_pos ([0-9]+)/', $line,$matches)) {
-            $sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s'", $matches[1], $logName);
+            $sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = @@server_id", $matches[1], $logName);
             $binlogPosition = $matches[1];
             mysql_query($sql) or die("Could not update binlog_consumer_status:\n$sql\n" . mysql_error());
           }
