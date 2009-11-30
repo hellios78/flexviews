@@ -65,7 +65,9 @@ refresh_mvlog_cache();
 
 echo " -- Finding binary logs to process\n";
 $stmt = mysql_query($sql, $dest) or die($sql . "\n" . mysql_error() . "\n");
+$processedLogs = 0;
 while($row = mysql_fetch_assoc($stmt)) {
+  ++$processedLogs;
 
   if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;
   $execCmdLine = sprintf("%s -v -R --start-position=%d --stop-position=%d %s", $cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
@@ -73,10 +75,13 @@ while($row = mysql_fetch_assoc($stmt)) {
   $proc = popen($execCmdLine, "r");
   process_binlog($proc, $row['master_log_file']);
   pclose($proc);
+
 }
 
+exit($processedLogs);
 
 function process_binlog($proc,$logName) {
+  static $mvlogDB = false;
   $newTransaction = true;
   global $mvlogList;
   refresh_mvlog_cache();
@@ -87,9 +92,11 @@ function process_binlog($proc,$logName) {
   $valList = "";
   $oldTable = "";
 
-  $stmt = mysql_query("SELECT flexviews.get_setting('mvlog_db')") or die ("Could not determine mvlog DB\n" . mysql_error());
-  $row = mysql_fetch_array($stmt);
-  $mvlogDB = $row[0];
+  if(!$mvlogDB) {
+    $stmt = mysql_query("SELECT flexviews.get_setting('mvlog_db')") or die ("Could not determine mvlog DB\n" . mysql_error());
+    $row = mysql_fetch_array($stmt);
+    $mvlogDB = $row[0];
+  }
   $binlogPosition = 4;
   $lastLine = "";
  
