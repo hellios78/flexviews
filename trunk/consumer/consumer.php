@@ -80,19 +80,20 @@ while($row = mysql_fetch_assoc($stmt)) {
   $execCmdLine = sprintf("%s -v -R --start-position=%d --stop-position=%d %s", $cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
   echo  "-- $execCmdLine\n";
   $proc = popen($execCmdLine, "r");
-  process_binlog($proc, $row['master_log_file']);
+  process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos']);
   pclose($proc);
 
 }
 
 exit($processedLogs);
 
-function process_binlog($proc,$logName) {
+function process_binlog($proc,$logName, $binlogPosition) {
   static $mvlogDB = false;
   $newTransaction = true;
   global $mvlogList;
   global $source, $dest;
   global $serverId;
+  $timeStamp = false;
 
   refresh_mvlog_cache();
   $sql = "";
@@ -105,7 +106,6 @@ function process_binlog($proc,$logName) {
     $row = mysql_fetch_array($stmt);
     $mvlogDB = $row[0];
   }
-  $binlogPosition = 4;
   $lastLine = "";
  
   while( !feof($proc) ) { 
@@ -122,10 +122,7 @@ function process_binlog($proc,$logName) {
 
     $matches = array();
 
-    if($prefix=="SET T") {
-      $matches = explode('=', $line);
-      $timeStamp = $matches[1]; 
-    }elseif($prefix[0] == "#") {
+    if($prefix[0] == "#") {
       if($prefix == "### I" || $prefix == "### U" || $prefix == "### D") {
         if(preg_match('/### (UPDATE|INSERT INTO|DELETE FROM)\s([^.]+)\.(.*$)/', $line, $matches)) {
   	  $db = $matches[2];
@@ -142,31 +139,38 @@ function process_binlog($proc,$logName) {
           }
         }
       }else {
-          if(preg_match('/\s+end_log_pos ([0-9]+)/', $line,$matches)) {
-       #     $sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = $serverId", $matches[1], $logName);
-            $binlogPosition = $matches[1];
-       #     mysql_query($sql) or die("Could not update binlog_consumer_status:\n$sql\n" . mysql_error());
+          if(preg_match('/^#([0-9: ]+).*\s+end_log_pos ([0-9]+)/', $line,$matches)) {
+
+            $binlogPosition = $matches[2];
+  	    if(!$timeStamp) { 
+               new_uow($binlogPosition, $matches[1], $serverId, $logName);
+            }
+            $timeStamp = $matches[1];
           }
       }  
     }
 
     if($prefix=="# End" || ($prefix == "COMMI" && substr($line, 0, 6) == "COMMIT"))  {
-       echo $prefix . "\n";
-       $sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = $serverId", $binlogPosition, $logName);
-       mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
-echo "$sql\n";
-       mysql_query("COMMIT", $dest) or die("COULD NOT EXEC:\nCOMMIT;\n" . mysql_error());
-       mysql_query("START TRANSACTION", $dest) or die("COULD NOT EXEC:\nCOMMIT;\n" . mysql_error());
-       $sql = sprintf("INSERT INTO flexviews.mview_uow values(NULL,from_unixtime(%d));",$timeStamp);
-       mysql_query($sql,$dest) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
-
-       $sql = "SET @fv_uow_id := LAST_INSERT_ID();";
-       mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
-
+      new_uow($binlogPosition, $timeStamp, $serverId, $logName);
     }
 
   }
 
+}
+
+function new_uow($binlogPosition, $timeStamp, $serverId, $logName) {
+global $source, $dest;
+       mysql_query("START TRANSACTION", $dest) or die("COULD NOT START TRANSACTION;\n" . mysql_error());
+
+       $sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = $serverId", $binlogPosition, $logName);
+       mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
+
+       $sql = sprintf("INSERT INTO flexviews.mview_uow values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'));",rtrim($timeStamp));
+       mysql_query($sql,$dest) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
+       echo "$sql\n";
+
+       $sql = "SET @fv_uow_id := LAST_INSERT_ID();";
+       mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
 }
 
 function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
