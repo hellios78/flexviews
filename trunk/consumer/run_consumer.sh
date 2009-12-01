@@ -11,7 +11,7 @@ do
         fi;
 
         if [ $SLEEP_TIME -gt 5000000 ]; then
-          let SLEEP_TIME = 5000000;
+          let SLEEP_TIME=5000000;
         fi;
         usleep $SLEEP_TIME;
 done
