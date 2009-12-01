@@ -23,7 +23,7 @@ if(!empty($settings['flexviews']['mysqlbinlog'])) {
 	$cmdLine = 'mysqlbinlog';
 }
 
-foreach($settings['dest'] as $k => $v) {
+foreach($settings['source'] as $k => $v) {
   $cmdLine .= " --$k=$v";
 }
 
@@ -91,16 +91,17 @@ function process_binlog($proc,$logName) {
   static $mvlogDB = false;
   $newTransaction = true;
   global $mvlogList;
+  global $source, $dest;
+  global $serverId;
+
   refresh_mvlog_cache();
   $sql = "";
   
-  $serverId = 0;
-
   $valList = "";
   $oldTable = "";
 
   if(!$mvlogDB) {
-    $stmt = mysql_query("SELECT flexviews.get_setting('mvlog_db')") or die ("Could not determine mvlog DB\n" . mysql_error());
+    $stmt = mysql_query("SELECT flexviews.get_setting('mvlog_db')", $dest) or die ("Could not determine mvlog DB\n" . mysql_error());
     $row = mysql_fetch_array($stmt);
     $mvlogDB = $row[0];
   }
@@ -118,11 +119,6 @@ function process_binlog($proc,$logName) {
     #echo "-- $line\n";
 
     $prefix=substr($line, 0, 5);
-
-    #ASSUMPTION: server_id never changes in the middle of a binlog
-    if (!$serverId && preg_match('/\s+server id ([0-9]+)\s/', $line, $matches)) {
-      $serverId = $matches[1]; 
-    }
 
     $matches = array();
 
@@ -147,21 +143,25 @@ function process_binlog($proc,$logName) {
         }
       }else {
           if(preg_match('/\s+end_log_pos ([0-9]+)/', $line,$matches)) {
-            $sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = @@server_id", $matches[1], $logName);
+       #     $sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = $serverId", $matches[1], $logName);
             $binlogPosition = $matches[1];
-            mysql_query($sql) or die("Could not update binlog_consumer_status:\n$sql\n" . mysql_error());
+       #     mysql_query($sql) or die("Could not update binlog_consumer_status:\n$sql\n" . mysql_error());
           }
       }  
     }
-    if($prefix == "BEGIN" || substr($line, 0, 6) == "COMMIT")  {
-       $sql = "START TRANSACTION;";
-       mysql_query($sql) or die("COULD NOT BEGIN NEW TRANSACTION:\n" . mysql_error());
 
+    if($prefix=="# End" || ($prefix == "COMMI" && substr($line, 0, 6) == "COMMIT"))  {
+       echo $prefix . "\n";
+       $sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = $serverId", $binlogPosition, $logName);
+       mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
+echo "$sql\n";
+       mysql_query("COMMIT", $dest) or die("COULD NOT EXEC:\nCOMMIT;\n" . mysql_error());
+       mysql_query("START TRANSACTION", $dest) or die("COULD NOT EXEC:\nCOMMIT;\n" . mysql_error());
        $sql = sprintf("INSERT INTO flexviews.mview_uow values(NULL,from_unixtime(%d));",$timeStamp);
-       mysql_query($sql) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
+       mysql_query($sql,$dest) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
 
        $sql = "SET @fv_uow_id := LAST_INSERT_ID();";
-       mysql_query($sql) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
+       mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
 
     }
 
@@ -173,6 +173,8 @@ function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
   $sql = "";
   $valList = "";
   $line = "";
+  global $source, $dest;
+
   # loop over the input, collecting all the input values into a set of INSERT statements
   while($line = fgets($proc)) {
     #echo "***$line";
@@ -183,7 +185,7 @@ function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
     } elseif($line == "### SET")  {
         if ($valList) {
            $sql .= $valList . ")";
-           mysql_query($sql) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
+           mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
         }
 
         $valList = "(1, @fv_uow_id, $serverId";
@@ -195,7 +197,7 @@ function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
     } else {
 	#we are done collecting records for the update, so exit the loop
 	$sql .= $valList . ")";
-        mysql_query($sql) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_query());
+        mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_query());
         $valList = "";
 	break; 
     }
@@ -206,10 +208,12 @@ function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
 
 function refresh_mvlog_cache() {
   global $mvlogList;
+  global $source,$dest;
+
   $mvlogList = array();
 
   $sql = "SELECT table_schema, table_name from flexviews.mvlogs where active_flag=1";
-  $stmt = mysql_query($sql);
+  $stmt = mysql_query($sql, $dest);
   while($row = mysql_fetch_array($stmt)) {
     $mvlogList[$row[0] . $row[1]] = 1;
   }
