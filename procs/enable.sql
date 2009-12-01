@@ -79,31 +79,26 @@ BEGIN
    IF v_keys != "" THEN
      SET v_sql = CONCAT(v_sql, '(', v_keys,')\n');
    END IF;
+   SET v_sql = CONCAT(v_sql, ' ENGINE=INNODB ');
 
    IF v_mview_refresh_type != 'INCREMENTAL' THEN
      SET v_sql = CONCAT(v_sql, ' AS ', v_mview_definition);
-     SET @v_sql = v_sql;
    ELSE
      CALL flexviews.ensure_validity(v_mview_id);
+   END IF;
+   SET v_sql = CONCAT(v_sql, flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
+   SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
+   IF flexviews.get_where(v_mview_id) != '' THEN
+     SET v_sql = CONCAT(v_sql, ' WHERE ', flexviews.get_where(v_mview_id), char(10));
+   END IF;
 
-     SET v_sql = CONCAT(v_sql, ' ENGINE=INNODB ');
-     SET v_sql = CONCAT(v_sql, 'AS (', char(10));
-     SET v_sql = CONCAT(v_sql, flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
-     SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
-     IF flexviews.get_where(v_mview_id) != '' THEN
-     	SET v_sql = CONCAT(v_sql, ' WHERE ', flexviews.get_where(v_mview_id), char(10));
-     END IF;
 
-     -- If there are non-distributive aggregate functions, add a dependent materialization table
-     -- A subview will only be created if necessary
-     CALL flexviews.create_child_views(v_mview_id);
+   IF flexviews.get_delta_groupby(v_mview_id) != "" THEN
+     SET v_sql = CONCAT(v_sql, char(10), ' GROUP BY ', flexviews.get_delta_groupby(v_mview_id), char(10)); 
+   END IF;
 
-     IF flexviews.get_delta_groupby(v_mview_id) != "" THEN
-       SET v_sql = CONCAT(v_sql, char(10), ' GROUP BY ', flexviews.get_delta_groupby(v_mview_id), char(10)); 
-     END IF;
-     SET v_sql = CONCAT(v_sql, ');');
-     SET @v_sql = v_sql;
-END IF;
+   SET @v_sql = CONCAT(v_sql, ' LIMIT 0');
+
    PREPARE create_stmt FROM @v_sql;
    SET @tstamp = NOW(); 
 
@@ -115,11 +110,25 @@ END IF;
     -- WHERE PROPAGATE CHANGES ARE APPLIED, THEN THE REFRESH PROCESS
     -- APPLIES THE DELTAS TO THE MV 
     IF v_mview_refresh_type = 'INCREMENTAL' THEN
-      SET v_sql = CONCAT('DROP TABLE IF EXISTS ', v_mview_schema, '.', v_mview_name, '_delta');
+      START TRANSACTION;
+
+      SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, ' ' );
+
+      SET v_sql = CONCAT(v_sql, flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
+      SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
+      IF flexviews.get_where(v_mview_id) != '' THEN
+      	SET v_sql = CONCAT(v_sql, ' WHERE ', flexviews.get_where(v_mview_id), char(10));
+      END IF;
+
+
+      IF flexviews.get_delta_groupby(v_mview_id) != "" THEN
+        SET v_sql = CONCAT(v_sql, char(10), ' GROUP BY ', flexviews.get_delta_groupby(v_mview_id), char(10)); 
+      END IF;
+
       SET @v_sql = v_sql;  
-      PREPARE drop_stmt FROM @v_sql;
-      EXECUTE drop_stmt;
-      DEALLOCATE PREPARE drop_stmt;
+      PREPARE insert_stmt FROM @v_sql;
+      EXECUTE insert_stmt;
+      DEALLOCATE PREPARE insert_stmt;
 
       -- We must use the signal table to determine the actual UOW_ID
       -- to which this view was actually created
@@ -136,6 +145,12 @@ END IF;
     
       SET @signal_id := NULL;
 
+      SET v_sql = CONCAT('DROP TABLE IF EXISTS ', v_mview_schema, '.', v_mview_name, '_delta');
+      SET @v_sql = v_sql;  
+      PREPARE drop_stmt FROM @v_sql;
+      EXECUTE drop_stmt;
+      DEALLOCATE PREPARE drop_stmt;
+
       SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,KEY(uow_id))', char(10));
       SET v_sql = CONCAT(v_sql, 'ENGINE=INNODB ');
       SET v_sql = CONCAT(v_sql, 'AS ( SELECT * FROM ', v_mview_schema, '.', v_mview_name, ' LIMIT 0)');
@@ -143,6 +158,9 @@ END IF;
       PREPARE create_stmt FROM @v_sql;
       EXECUTE create_stmt;
       DEALLOCATE PREPARE create_stmt;
+      -- If there are non-distributive aggregate functions, add a dependent materialization table
+      -- A subview will only be created if necessary
+      CALL flexviews.create_child_views(v_mview_id);
     END IF;
 END ;;
 
