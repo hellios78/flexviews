@@ -593,7 +593,7 @@ fromLoop: LOOP
 
   SET v_from_clause = CONCAT(v_from_clause, ' ',
                              IF(v_mview_join_condition IS NULL AND v_from_clause = '' , '', ' JOIN '), ' ',
-                             flexviews.get_setting('mvlog_db'), '.', v_mview_table_name, IF(v_uow_id_end IS NOT NULL, '_mvlog', ''), ' as ',
+                             IF(v_uow_id_end IS NOT NULL, flexviews.get_setting('mvlog_db'), v_mview_table_schema),  '.', v_mview_table_name, IF(v_uow_id_end IS NOT NULL, '_mvlog', ''), ' as ',
                              v_mview_table_alias, ' ',
                              IFNULL(v_mview_join_condition, '') );
 END LOOP;
