@@ -15,12 +15,21 @@ $settings=@parse_ini_file($iniFile,true) or die("Could not read ini file: $iniFi
 if(!$settings || empty($settings['flexviews'])) {
   die("Could not find [flexviews] section or .ini file not found");
 }
+$onlyDatabases = array();
 
-#the mysqlbinlog command line starts with the 
+#the mysqlbinlog command line location may be set in the .ini file
 if(!empty($settings['flexviews']['mysqlbinlog'])) {
-	$cmdLine = $settings['flexviews']['mysqlbinlog'];
+  $cmdLine = $settings['flexviews']['mysqlbinlog'];
 } else {
-	$cmdLine = 'mysqlbinlog';
+  $cmdLine = 'mysqlbinlog';
+}
+
+#are we only recording logs from one (or more) databases, comma seperated?
+if(!empty($settings['flexviews']['only_database'])) {
+  $vals = explode(',', $settings['flexviews']['only_databases']);
+  foreach($vals as $val) {
+    $onlyDatabases[] = trim($val);
+  }
 }
 
 foreach($settings['source'] as $k => $v) {
@@ -167,7 +176,7 @@ global $source, $dest;
 
        $sql = sprintf("INSERT INTO flexviews.mview_uow values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'));",rtrim($timeStamp));
        mysql_query($sql,$dest) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
-       echo "$sql\n";
+       #echo "$sql\n";
 
        $sql = "SET @fv_uow_id := LAST_INSERT_ID();";
        mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
@@ -177,6 +186,16 @@ function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
   $sql = "";
   $valList = "";
   $line = "";
+  global $onlyDatabases;
+
+  $skip_rows = false;
+
+  #if there is a list of databases, and this database is not on the list
+  #then skip the rows
+  if(!empty($onlyDatabases) && empty($onlyDatabases[trim($db)])) {
+    $skip_rows = true;
+  }
+
   global $source, $dest;
 
   # loop over the input, collecting all the input values into a set of INSERT statements
@@ -189,7 +208,7 @@ function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
     } elseif($line == "### SET")  {
         if ($valList) {
            $sql .= $valList . ")";
-           mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
+           if(!$skip_rows) mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
         }
 
         $valList = "(1, @fv_uow_id, $serverId";
@@ -201,7 +220,8 @@ function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
     } else {
 	#we are done collecting records for the update, so exit the loop
 	$sql .= $valList . ")";
-        mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_query());
+
+        if(!$skip_rows) mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
         $valList = "";
 	break; 
     }
