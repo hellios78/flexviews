@@ -91,8 +91,12 @@ IF v_signal_id IS NOT NULL AND v_refreshed_to_uow_id IS NULL THEN
   SELECT uow_id
     INTO v_refreshed_to_uow_id
     FROM flexviews.mview_signal_mvlog
-   WHERE signal_id = v_signal_id;
+   WHERE signal_id = v_signal_id 
+     and `fv$server_id` = @@server_id;
 
+  IF v_refreshed_to_uow_id IS NULL THEN
+    CALL flexviews.signal('ERROR: SIGNAL ID NOT FOUND');
+  END IF;
    
    UPDATE flexviews.mview mv
      JOIN flexviews.mview_uow uow
