@@ -80,7 +80,7 @@ function process_sql($sql) {
   $tok = tokenize($sql);
   $from = process_select($tok);
   if($from !== false) {
-    echo "call flexviews.add_table(@mv_id,'kfpw_orbus_metrics', '{$tok[$from+1]}', 'the_tbl', NULL);\n";
+    echo "call flexviews.add_table(@mv_id,'DEST_DATABASE', '{$tok[$from+1]}', 'the_tbl', NULL);\n";
   }
   echo "\n";
 }
