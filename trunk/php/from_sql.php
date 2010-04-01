@@ -70,7 +70,8 @@ function process_sql($sql) {
     $info = explode(':', $sql);
     $table=trim($info[1]);
     echo "-- Flexview start\n";
-    echo("call flexviews.create('kfpw_orbus_mv', '$table', 'INCREMENTAL');\n");
+    #FIXME: parse database.tablename
+    echo("call flexviews.create('DEST_DATABASE.', '$table', 'INCREMENTAL');\n");
     echo("SET @mvid := LAST_INSERT_ID();\n");
   } else {
     echo "-- $sql\n";
