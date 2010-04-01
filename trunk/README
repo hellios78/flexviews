@@ -20,11 +20,32 @@ Welcome to Flexviews!
 
 Flexviews is a unique toolkit for the creation and upkeep of MATERIALIZED VIEWS for MySQL.
 
+Quick Overview
+-------------------
+installation:
+Change to the directory containing the install.sql file
+Connect to MySQL as the 'root' user (or any user with SUPER privilege)
+source the install.sql file
+set the binary log consumer position with consumer/set_position.php
+run the consumer (there is a .sh file provided)
+you must leave the consumer running at all times!
+
+directories:
+consumer - this PHP program reads binary logs using mysqlbinlog and inserts entries into table change logs
+flexviews_demo - contains demo data and example materialized views
+lua - contains an experimental LUA version of the consumer which requires the 'replication' branch of MySQL proxy
+php - contains ancilliary scripts like from_sql.php which takes a formatted file of SQL statements and produces flexviews stored procedure calls
+procs - contains the source to the stored procedures.  usually invoked by install.sql
+schema - contains the CREATE DATABASE and CREATE TABLE statements for the flexviews schema.  usually invoked by install.sql
+
+What is Flexviews
 My first experience with materialized views was with Oracle 8i.  When my career went in a MySQL direction, the thing I missed most from Oracle was view materialization.  I realised after a few years that my vision of materialized views would likely never make its way into the core MySQL server any time in the near future.
 
 Flexviews supports SELECT-PROJECT-JOIN queries leveraging the algorithm described in 'How to roll a join': http://portal.acm.org/citation.cfm?id=335393 (2000)
 Flexviews extends this algorithm to distributive aggregate functions with 'summary delta tables' as descbribed in: http://portal.acm.org/citation.cfm?id=253260.253277 (1997)
 Flexviews combines both ideas to support non-distributable aggregate functions such as MIN/MAX/COUNT(DISTINCT) by trading space-for-time using a secondary summary table, though this could be handled better with transparent query rewrite.
 
-Many thanks to the authors.
+Many thanks to the authors of those papers.
+
+Justin Swanhart
 
