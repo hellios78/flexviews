@@ -1,247 +1,325 @@
 #!/usr/local/bin/php
 <?php
-
-if(!empty($argv[1])) {
-  $iniFile = $argv[1];
-} else {
-  $iniFile = "./consumer.ini";
-}
-
 error_reporting(E_ALL);
 
-$mvlogList = array();
-
-$settings=@parse_ini_file($iniFile,true) or die("Could not read ini file: $iniFile\n");
-if(!$settings || empty($settings['flexviews'])) {
-  die("Could not find [flexviews] section or .ini file not found");
-}
-$onlyDatabases = array();
-
-#the mysqlbinlog command line location may be set in the .ini file
-if(!empty($settings['flexviews']['mysqlbinlog'])) {
-  $cmdLine = $settings['flexviews']['mysqlbinlog'];
-} else {
-  $cmdLine = 'mysqlbinlog';
-}
-
-#are we only recording logs from one (or more) databases, comma seperated?
-if(!empty($settings['flexviews']['only_database'])) {
-  $vals = explode(',', $settings['flexviews']['only_databases']);
-  foreach($vals as $val) {
-    $onlyDatabases[] = trim($val);
-  }
-}
-
-foreach($settings['source'] as $k => $v) {
-  $cmdLine .= " --$k=$v";
-}
-
-$S = $settings['source'];
-$D = $settings['dest'];
-
-$source = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password']) or die('Could not connect to MySQL server:' . mysql_error());
-$dest = mysql_connect($D['host'] . ':' . $D['port'], $D['user'], $D['password']) or die('Could not connect to MySQL server:' . mysql_error());
-mysql_query("USE flexviews",$dest);
-mysql_query("BEGIN;", $dest) or die(mysql_error());
-mysql_query("CREATE TEMPORARY table flexviews.log_list (log_name char(50), primary key(log_name))",$dest) or die(mysql_error());
-
-$sql = "SELECT @@server_id";
-$stmt = mysql_query($sql, $source);
-$row = mysql_fetch_array($stmt) or die($sql . "\n" . mysql_error() . "\n");
-$serverId = $row[0];
-
-$stmt = mysql_query("SET SQL_LOG_BIN=0", $dest);
-if(!$stmt) die(mysql_error());
-
-/* RUN THIS ON THE SOURCE DATABASE*/
-$stmt = mysql_query("SHOW BINARY LOGS", $source);
-if(!$stmt) die(mysql_error());
-
-while($row = mysql_fetch_array($stmt)) {
-  $sql = sprintf("INSERT INTO flexviews.binlog_consumer_status (server_id, master_log_file, master_log_size, exec_master_log_pos) values ($serverId, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $row['Log_name'], $row['File_size'], $row['File_size']);
-
-  mysql_query($sql, $dest) or die($sql . "\n" . mysql_error() . "\n");
-
-  $sql = sprintf("INSERT INTO log_list (log_name) values ('%s')", $row[0]);
-  mysql_query($sql, $dest) or die($sql . "\n" . mysql_error() . "\n");
-}
-mysql_query("commit", $dest) or die("could not commit\n" . mysql_error() . "\n");
-
-// TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
-$sql = "DELETE bcs.* FROM flexviews.binlog_consumer_status bcs where server_id=$serverId AND master_log_file not in (select log_name from log_list)";
-mysql_query($sql, $dest) or die($sql . "\n" . mysql_error() . "\n");
-
-$sql = "DROP TEMPORARY table log_list";
-mysql_query($sql, $dest) or die("Could not drop TEMPORARY TABLE log_list\n");
-
-$sql = "SELECT bcs.* from flexviews.binlog_consumer_status bcs where server_id=$serverId AND exec_master_log_pos < master_log_size order by master_log_file;";
-
-#get the list of tables to mvlog from the database
-refresh_mvlog_cache();
-
-echo " -- Finding binary logs to process\n";
-$stmt = mysql_query($sql, $dest) or die($sql . "\n" . mysql_error() . "\n");
-$processedLogs = 0;
-while($row = mysql_fetch_assoc($stmt)) {
-  ++$processedLogs;
-
-  if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;
-  $execCmdLine = sprintf("%s -v -R --start-position=%d --stop-position=%d %s", $cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
-  echo  "-- $execCmdLine\n";
-  $proc = popen($execCmdLine, "r");
-  process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos']);
-  pclose($proc);
+class FlexApplier {
 
 }
 
-exit($processedLogs);
 
-function process_binlog($proc,$logName, $binlogPosition) {
-  static $mvlogDB = false;
-  $newTransaction = true;
-  global $mvlogList;
-  global $source, $dest;
-  global $serverId;
-  $timeStamp = false;
+class FlexConsumer {
+	private	$mvlogList = array();
+	private $settings = array();
+	private $onlyDatabases = array();
+	private $cmdLine;
 
-  refresh_mvlog_cache();
-  $sql = "";
-  
-  $valList = "";
-  $oldTable = "";
+	private $source = NULL;
+	private $dest = NULL;
 
-  if(!$mvlogDB) {
-    $stmt = mysql_query("SELECT flexviews.get_setting('mvlog_db')", $dest) or die ("Could not determine mvlog DB\n" . mysql_error());
-    $row = mysql_fetch_array($stmt);
-    $mvlogDB = $row[0];
-  }
-  $lastLine = "";
- 
-  while( !feof($proc) ) { 
-    if($lastLine) {
-      $line = $lastLine;
-       $lastLine = "";
-    } else {
-      $line = trim(fgets($proc));
-    }
-  
-    #echo "-- $line\n";
+	private $serverId = NULL;
 
-    $prefix=substr($line, 0, 5);
+		
+	function __construct($settings = NULL) {
+		if($settings) {
+			$this->settings = $settings;	
+		} else {
+			$this->read_settings();
+		}
+		if(!$this->cmdLine) $this->cmdLine = `which mysqlbinlog`;
+		
+		#are we only recording logs from one (or more) databases, comma seperated?
+		if(!empty($this->settings['flexviews']['only_database'])) {
+			$vals = explode(',', $this->settings['flexviews']['only_databases']);
+			foreach($vals as $val) {
+				$this->onlyDatabases[] = trim($val);
+			}
+		}
+	
+		foreach($this->settings['source'] as $k => $v) {
+			$this->cmdLine .= " --$k=$v";
+		}
+		
+		$S = $this->settings['source'];
+		$D = $this->settings['dest'];
+	
+		$this->source = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password']) or die('Could not connect to MySQL server:' . mysql_error());
+		$this->dest = mysql_connect($D['host'] . ':' . $D['port'], $D['user'], $D['password']) or die('Could not connect to MySQL server:' . mysql_error());
+	
+	}
+	
+	private function read_settings() {
+		if(!empty($argv[1])) {
+			$iniFile = $argv[1];
+		} else {
+			$iniFile = "./consumer.ini";
+		}
+	
+		$this->settings=@parse_ini_file($iniFile,true) or die("Could not read ini file: $iniFile\n");
+		if(!$this->settings || empty($this->settings['flexviews'])) {
+			die("Could not find [flexviews] section or .ini file not found");
+		}
+	
+		#the mysqlbinlog command line location may be set in the .ini file
+		if(!empty($this->settings['flexviews']['mysqlbinlog'])) {
+			$this->cmdLine = $this->settings['flexviews']['mysqlbinlog'];
+		} 
+	
+	}
 
-    $matches = array();
+	function capture_changes() {
+				
+		$this->initialize_dest();
+		$this->get_source_logs();
+		$this->cleanup_logs();
+				
+		$sql = "SELECT bcs.* 
+		          FROM flexviews.binlog_consumer_status bcs 
+		         where server_id=$serverId 
+		           AND exec_master_log_pos < master_log_size 
+		         order by master_log_file;";
+		
+		echo " -- Finding binary logs to process\n";
+		$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
+		$processedLogs = 0;
+		while($row = mysql_fetch_assoc($stmt)) {
+			++$processedLogs;
 
-    if($prefix[0] == "#") {
-      if($prefix == "### I" || $prefix == "### U" || $prefix == "### D") {
-        if(preg_match('/### (UPDATE|INSERT INTO|DELETE FROM)\s([^.]+)\.(.*$)/', $line, $matches)) {
-  	  $db = $matches[2];
-          $table = $matches[3] . '_mvlog';
-          $base_table = $matches[3];
+			if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;
+			$execCmdLine = sprintf("%s --base64-output=decode-rows -v -R --start-position=%d --stop-position=%d %s", $this->cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
+			echo  "-- $execCmdLine\n";
+			$proc = popen($execCmdLine, "r");
+			$this->process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos']);
+			pclose($proc);
+		}
+		
+		return $processedLogs;
 
-          if($db == 'flexviews' && $table == 'mvlogs') {
-            refresh_mvlog_cache();
-          }
+	}
+	
+	private function refresh_mvlog_cache() {
+		$this->mvlogList = array();
+			
+		$sql = "SELECT table_schema, table_name from flexviews.mvlogs where active_flag=1";
+		$stmt = mysql_query($sql, $this->dest);
+		while($row = mysql_fetch_array($stmt)) {
+			$this->mvlogList[$row[0] . $row[1]] = 1;
+		}
+	}
+	
+	/* Set up the destination connection */
+	function initialize_dest() {
+		mysql_query("USE flexviews",$this->dest);
+		mysql_query("BEGIN;", $this->dest) or die(mysql_error());
+		mysql_query("CREATE TEMPORARY table flexviews.log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
+	
+		$sql = "SELECT @@server_id";
+		$stmt = mysql_query($sql, $this->source);
+		$row = mysql_fetch_array($stmt) or die($sql . "\n" . mysql_error() . "\n");
+		$this->serverId = $row[0];
+	
+		$stmt = mysql_query("SET SQL_LOG_BIN=0", $this->dest);
+		if(!$stmt) die(mysql_error());
+		
+		$stmt = mysql_query("SELECT flexviews.get_setting('mvlog_db')", $dest) or die ("Could not determine mvlog DB\n" . mysql_error());
+		$row = mysql_fetch_array($stmt);
+		$this->mvlogDB = $row[0];
+		
+	}
+	
+	/* Get the list of logs from the source */
+	function get_source_logs() {
+		$stmt = mysql_query("SHOW BINARY LOGS", $this->source);
+		if(!$stmt) die(mysql_error());
+	
+		while($row = mysql_fetch_array($stmt)) {
+			$sql = sprintf("INSERT INTO flexviews.binlog_consumer_status (server_id, master_log_file, master_log_size, exec_master_log_pos) values ($serverId, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $row['Log_name'], $row['File_size'], $row['File_size']);
+			mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
+	
+			$sql = sprintf("INSERT INTO log_list (log_name) values ('%s')", $row[0]);
+			mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
+		}
+	}
+	
+	/* Remove any logs that have gone away */
+	function cleanup_logs() {
+		// TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
+		$sql = "DELETE bcs.* FROM flexviews.binlog_consumer_status bcs where server_id={$this->serverId} AND master_log_file not in (select log_name from log_list)";
+		mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 
-          if(!empty($mvlogList[$db . $base_table])) {
-	    $lastLine = process_rowlog($proc, $db, $table, $serverId, $mvlogDB);
-            continue;
-          }
-        }
-      }else {
-          if(preg_match('/^#([0-9: ]+).*\s+end_log_pos ([0-9]+)/', $line,$matches)) {
+		$sql = "DROP TEMPORARY table log_list";
+		mysql_query($sql, $this->dest) or die("Could not drop TEMPORARY TABLE log_list\n");
+	}
 
-            $binlogPosition = $matches[2];
-  	    if(!$timeStamp) { 
-               new_uow($binlogPosition, $matches[1], $serverId, $logName);
-            }
-            $timeStamp = $matches[1];
-          }
-      }  
-    }
 
-    if($prefix=="# End" || ($prefix == "COMMI" && substr($line, 0, 6) == "COMMIT"))  {
-      new_uow($binlogPosition, $timeStamp, $serverId, $logName);
-    }
+	/* Called when a new transaction starts*/
+	function start_transaction($binlogPosition, $timeStamp, $logName) {
+		mysql_query("START TRANSACTION", $this->dest) or die("COULD NOT START TRANSACTION;\n" . mysql_error());
 
-  }
+		$sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = {$this->serverId}", $binlogPosition, $logName);
+		mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
 
-}
+		$sql = sprintf("INSERT INTO flexviews.mview_uow values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'));",rtrim($timeStamp));
+		mysql_query($sql,$dest) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
+		 
+		$sql = "SET @fv_uow_id := LAST_INSERT_ID();";
+		mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
 
-function new_uow($binlogPosition, $timeStamp, $serverId, $logName) {
-global $source, $dest;
-       mysql_query("START TRANSACTION", $dest) or die("COULD NOT START TRANSACTION;\n" . mysql_error());
+	}
 
-       $sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = $serverId", $binlogPosition, $logName);
-       mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
+    /* Called when a transaction commits */
+	function commit_transaction($binlogPosition, $timeStamp, $logName) {
+		$sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = {$this->serverId}", $binlogPosition, $logName);
+		mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
+		mysql_query("COMMIT", $this->dest) or die("COULD NOT COMMIT TRANSACTION;\n" . mysql_error());
+	}
 
-       $sql = sprintf("INSERT INTO flexviews.mview_uow values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'));",rtrim($timeStamp));
-       mysql_query($sql,$dest) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
-       #echo "$sql\n";
+	/* Called when a transaction rolls back */
+	function rollback_transaction($binlogPostion, $timeStamp, $logName) {
+		mysql_query("ROLLBACK", $this->dest) or die("COULD NOT ROLLBACK TRANSACTION;\n" . mysql_error());
+		$sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = {$this->serverId}", $binlogPosition, $logName);
+		mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
+		mysql_query("COMMIT", $this->dest) or die("COULD NOT COMMIT TRANSACTION LOG POSITION UPDATE;\n" . mysql_error());
+		
+	}
 
-       $sql = "SET @fv_uow_id := LAST_INSERT_ID();";
-       mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
-}
+	/* Called when a row is deleted */
+	function delete_row($mvLogDB, $mvLogTable, $row = array()) {
+		$valList .= "(1, @fv_uow_id, {$this->serverId}," . implode(",", $row) . ")";
+		$sql = sprintf("INSERT INTO %s.`%s` VALUES %s", $mvLogDB, $mvLogTable, $valList );
+		mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
+	}
 
-function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
-  $sql = "";
-  $valList = "";
-  $line = "";
-  global $onlyDatabases;
+	/* Called when a row is inserted */
+	function insert_row($mvLogDB, $mvLogTable, $row = array()) {
+		$valList .= "(1, @fv_uow_id, $this->serverId," . implode(",", $row) . ")";
+		$sql = sprintf("INSERT INTO %s.`%s` VALUES %s", $mvLogDB, $mvLogTable, $valList );
+		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
+	}
+	
+	function process_binlog($proc,$logName, $binlogPosition) {
+		static $mvlogDB = false;
+		//$newTransaction = true;
+		/*
+		 global $mvlogList;
+		 global $source, $dest;
+		 global $serverId;
+		 */
+		$timeStamp = false;
 
-  $skip_rows = false;
+		$this->refresh_mvlog_cache();
+		$sql = "";
 
-  #if there is a list of databases, and this database is not on the list
-  #then skip the rows
-  if(!empty($onlyDatabases) && empty($onlyDatabases[trim($db)])) {
-    $skip_rows = true;
-  }
+		$valList = "";
+		$oldTable = "";
 
-  global $source, $dest;
 
-  # loop over the input, collecting all the input values into a set of INSERT statements
-  while($line = fgets($proc)) {
-    #echo "***$line";
-    $line = trim($line);
-    if($line == "### WHERE") {
-      $valList .= "(-1, @fv_uow_id, $serverId";
-      $sql = sprintf("INSERT INTO %s.`%s` VALUES ", $mvLogDB, $table, $serverId);
-    } elseif($line == "### SET")  {
-        if ($valList) {
-           $sql .= $valList . ")";
-           if(!$skip_rows) mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
-        }
 
-        $valList = "(1, @fv_uow_id, $serverId";
-        $sql = sprintf("INSERT INTO %s.`%s` VALUES ", $mvLogDB, $table, $serverId);
-    } elseif(preg_match('/###\s+@[0-9]+=(.*)$/', $line, $matches)) {
-        $val = ltrim($matches[1],"'");
-        $val = rtrim($val,"'");
-        $valList .= ',\'' . $val . '\'';
-    } else {
-	#we are done collecting records for the update, so exit the loop
-	$sql .= $valList . ")";
+		$lastLine = "";
 
-        if(!$skip_rows) mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
-        $valList = "";
-	break; 
-    }
-  }
-  #return the last line so that we can process it in the parent body
-  return $line;
-}
+		while( !feof($proc) ) {
+			if($lastLine) {
+				$line = $lastLine;
+				$lastLine = "";
+			} else {
+				$line = trim(fgets($proc));
+			}
 
-function refresh_mvlog_cache() {
-  global $mvlogList;
-  global $source,$dest;
+			#echo "-- $line\n";
 
-  $mvlogList = array();
+			$prefix=substr($line, 0, 5);
 
-  $sql = "SELECT table_schema, table_name from flexviews.mvlogs where active_flag=1";
-  $stmt = mysql_query($sql, $dest);
-  while($row = mysql_fetch_array($stmt)) {
-    $mvlogList[$row[0] . $row[1]] = 1;
-  }
+			$matches = array();
 
+
+			if($prefix == "### I" || $prefix == "### U" || $prefix == "### D") {
+				if(preg_match('/### (UPDATE|INSERT INTO|DELETE FROM)\s([^.]+)\.(.*$)/', $line, $matches)) {
+					$db = $matches[2];
+					$table = $matches[3] . '_mvlog';
+					$base_table = $matches[3];
+
+					if($db == 'flexviews' && $table == 'mvlogs') {
+						refresh_mvlog_cache();
+					}
+
+					if(!empty($mvlogList[$db . $base_table])) {
+						$lastLine = process_rowlog($proc, $db, $table, $serverId, $this->mvlogDB);
+						continue;
+					}
+				}
+			} else {
+				if(preg_match('/^#([0-9: ]+).*\s+end_log_pos ([0-9]+)/', $line,$matches)) {
+
+					$binlogPosition = $matches[2];
+					if(!$timeStamp) {
+						new_uow($binlogPosition, $matches[1], $serverId, $logName);
+					}
+					$timeStamp = $matches[1];
+				}
+			}
+			 
+
+			if($prefix=="# End" || (substr($line, 0, 6) == "COMMIT"))  {
+				new_uow($binlogPosition, $timeStamp, $serverId, $logName);
+			}
+
+		}
+		 
+	}	
+	
+
+	function process_rowlog($proc, &$db, &$table, &$serverId, &$mvLogDB) {
+		$sql = "";
+		$valList = "";
+		$line = "";
+		global $onlyDatabases;
+		global $source, $dest;
+		$skip_rows = false;
+
+		#if there is a list of databases, and this database is not on the list
+		#then skip the rows
+		if(!empty($this->onlyDatabases) && empty($this->onlyDatabases[trim($db)])) {
+			$skip_rows = true;
+		}
+
+		# loop over the input, collecting all the input values into a set of INSERT statements
+		$values = array();
+		$row = array();
+		$mode = 0;
+		
+		while($line = fgets($proc)) {
+			#echo "***$line";
+			$line = trim($line);
+			if($line == "### WHERE") {
+				$mode = -1;
+			} elseif($line == "### SET")  {
+				if ($valList) {
+					$sql .= $valList . ")";
+					if(!$skip_rows) mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
+				}
+				$mode = 1;
+			} elseif(preg_match('/###\s+@[0-9]+=(.*)$/', $line, $matches)) {
+				$row[] = $val;
+			} else {
+				if(!$skip_rows) {
+					switch($mode) {
+						case -1:
+							$this->delete_row($mvLogDB, $table, $row);
+							break;
+						case 1:
+							$this->insert_row($mvLogDB, $table, $row);
+							break;
+						default:
+							die('UNEXPECTED MODE IN PROCESS_ROWLOG!');
+					}					
+				} 
+				$row = array();
+				break;
+			}
+		}
+		#return the last line so that we can process it in the parent body
+		#you can't seek backwards in a proc stream...
+		return $line;
+	}
 
 }
 
