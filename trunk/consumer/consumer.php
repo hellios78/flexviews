@@ -12,11 +12,15 @@ class FlexConsumer {
 	private $dest = NULL;
 
 	private $serverId = NULL;
-
+	
+	private $binlogServerId;
+	
+	public  $raiseWarnings = true;
+	
 	#Construct a new consumer object.
 	#By default read settings from the INI file unless they are passed
 	#into the constructor	
-	function __construct($settings = NULL) {
+	public function __construct($settings = NULL) {
 		if($settings) {
 			$this->settings = $settings;	
 		} else {
@@ -24,46 +28,36 @@ class FlexConsumer {
 		}
 		if(!$this->cmdLine) $this->cmdLine = `which mysqlbinlog`;
 		
-		#are we only recording logs from one (or more) databases, comma seperated?
+		#only record changelogs from certain databases?
 		if(!empty($this->settings['flexviews']['only_database'])) {
 			$vals = explode(',', $this->settings['flexviews']['only_databases']);
 			foreach($vals as $val) {
 				$this->onlyDatabases[] = trim($val);
 			}
 		}
-	
+		
+		#the mysqlbinlog command line location may be set in the settings
+		#we will autodetect the location if it is not specified explicitly
+		if(!empty($this->settings['flexviews']['mysqlbinlog'])) {
+			$this->cmdLine = $this->settings['flexviews']['mysqlbinlog'];
+		} 
+		
+		#build the command line from user, host, password, socket options in the ini file in the [source] section
 		foreach($this->settings['source'] as $k => $v) {
 			$this->cmdLine .= " --$k=$v";
 		}
 		
+		#shortcuts
 		$S = $this->settings['source'];
 		$D = $this->settings['dest'];
 	
+		/*TODO: support unix domain sockets */
 		$this->source = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password']) or die('Could not connect to MySQL server:' . mysql_error());
 		$this->dest = mysql_connect($D['host'] . ':' . $D['port'], $D['user'], $D['password']) or die('Could not connect to MySQL server:' . mysql_error());
 	
 	}
 	
-	private function read_settings() {
-		if(!empty($argv[1])) {
-			$iniFile = $argv[1];
-		} else {
-			$iniFile = "./consumer.ini";
-		}
-	
-		$this->settings=@parse_ini_file($iniFile,true) or die("Could not read ini file: $iniFile\n");
-		if(!$this->settings || empty($this->settings['flexviews'])) {
-			die("Could not find [flexviews] section or .ini file not found");
-		}
-	
-		#the mysqlbinlog command line location may be set in the .ini file
-		if(!empty($this->settings['flexviews']['mysqlbinlog'])) {
-			$this->cmdLine = $this->settings['flexviews']['mysqlbinlog'];
-		} 
-	
-	}
-
-	function capture_changes() {
+	public function capture_changes() {
 				
 		$this->initialize_dest();
 		$this->get_source_logs();
@@ -97,13 +91,30 @@ class FlexConsumer {
 
 	}
 	
+	private function read_settings() {
+		if(!empty($argv[1])) {
+			$iniFile = $argv[1];
+		} else {
+			$iniFile = "./consumer.ini";
+		}
+	
+		$this->settings=@parse_ini_file($iniFile,true) or die("Could not read ini file: $iniFile\n");
+		if(!$this->settings || empty($this->settings['flexviews'])) {
+			die("Could not find [flexviews] section or .ini file not found");
+		}
+
+
+	
+	}
+
+	
 	private function refresh_mvlog_cache() {
 		$this->mvlogList = array();
 			
-		$sql = "SELECT table_schema, table_name from flexviews.mvlogs where active_flag=1";
+		$sql = "SELECT table_schema, table_name, mvlog_name from flexviews.mvlogs where active_flag=1";
 		$stmt = mysql_query($sql, $this->dest);
 		while($row = mysql_fetch_array($stmt)) {
-			$this->mvlogList[$row[0] . $row[1]] = 1;
+			$this->mvlogList[$row[0] . $row[1]] = $row[3];
 		}
 	}
 	
@@ -204,6 +215,79 @@ class FlexConsumer {
 		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
 	}
 	
+
+	
+	function statement($sql) {
+
+		$sql = trim($sql);
+		preg_match("/^[/*!0-9-]*([A-Za-z])+\s*(.*)$/", $sql, $matches);
+		
+		$command = $matches[1];
+		$args = $matches[2];
+		
+		switch($command) {
+			#register change in delimiter so that we properly capture statements
+			case 'DELIMITER':
+				$this->delimiter = trim($args);
+				break;
+				
+			#ignore SET for now.  I don't think we need it for anything.
+			case 'SET':
+				break;
+				
+			#NEW TRANSACTION
+			case 'BEGIN':
+				$this->start_transaction();
+				break;
+			#END OF BINLOG, or binlog terminated early, or mysqlbinlog had an error
+			case 'ROLLBACK':
+				$this->rollback_transaction();
+				break;
+				
+			case 'COMMIT':
+				$this->commit_transaction();
+				break;
+				
+			#Might be interestested in CREATE TABLE at some point, but not right now.
+			case 'CREATE':
+				/* TODO: Eventually we want to be able to auto-register tables for changelogging when they are 
+				 *       created.
+				 */
+				break;
+
+			#DML IS BAD....... :(
+			case 'INSERT':
+			case 'UPDATE':
+			case 'DELETE':
+			case 'REPLACE':
+			case 'TRUNCATE':
+				/* TODO: If the table is not being logged, ignore DML on it... */
+				if($this->raiseWarnings) trigger_error('Detected statement DML on a table!  Changes can not be tracked!' , E_USER_WARNING);
+				break;
+
+			#ALTER we can deal with via some clever regex, when I get to it.  Need a test case
+			#with some complex alters
+			case 'ALTER':
+				/* TODO: If the table is not being logged, ignore ALTER on it...  If it is being logged, modify ALTER appropriately and apply to the log.*/ 
+				if($this->raiseWarnings) trigger_error('Detected ALTER on a table!  This may break CDC.  Alter the log table manually if necessary.' , E_USER_WARNING);
+				break;
+
+			#DROP probably isn't bad.  We might be left with an orphaned change log.	
+			case 'DROP':
+				/* TODO: If the table is not being logged, ignore DROP on it.  
+				 *       If it is being logged then drop the log and maybe any materialized views that use the table.. 
+				 *       Maybe throw an errro if there are materialized views that use a table which is dropped... (TBD)*/
+				if($this->raiseWarnings) trigger_error('Detected DROP on a table!  This may break CDC, particularly if the table is recreated with a different structure.' , E_USER_WARNING);
+				break;
+				
+			#I might have missed something important.  Catch it.	
+			#Maybe this should be E_USER_ERROR
+			default:
+				if($this->raiseWarnings) trigger_error('Unknown command: ' . $command, E_USER_WARNING);
+				break;
+		}
+	}
+	
 	function process_binlog($proc) {
 		static $mvlogDB = false;
 		$this->timeStamp = false;
@@ -216,7 +300,7 @@ class FlexConsumer {
 		#read from the mysqlbinlog process one line at a time.
 		#note the $lastLine variable - we process rowchange events
 		#in another procedure which also reads from $proc, and we
-		#can't seek backwards, so this function returns the next line t3o process
+		#can't seek backwards, so this function returns the next line to process
 		#In this case we use that line instead of reading from the file again
 		while( !feof($proc) ) {
 			if($lastLine) {
@@ -234,40 +318,47 @@ class FlexConsumer {
 			$prefix=substr($line, 0, 5);
 			$matches = array();
 
-			if($prefix == "### I" || $prefix == "### U" || $prefix == "### D") {
-				if(preg_match('/### (UPDATE|INSERT INTO|DELETE FROM)\s([^.]+)\.(.*$)/', $line, $matches)) {
-					$this->db          = $matches[2];
-					$this->mvlog_table = $matches[3] . '_mvlog';
-					$this->base_table  = $matches[3];
-
-					if($this->db == 'flexviews' && $this->base_table == 'mvlogs') {
-						refresh_mvlog_cache();
-					}
-
-					if(!empty($this->mvlogList[$db . $base_table])) {
-						$lastLine = process_rowlog($proc);
-						continue;
-					}
-				}
-			} else {
-				if($prefix[0] == "#" && preg_match('/^#([0-9: ]+).*\s+end_log_pos ([0-9]+)/', $line,$matches)) {
-
-					$this->binlogPosition = $matches[2];
-					if(!$this->timeStamp) {
-						$this->start_transaction();
-					}
+			#Control information from MySQLbinlog is prefixed with a hash comment.
+			if($prefix[0] == "#") {
+				$binlogStatement = "";
+				if (preg_match('/^#([0-9: ]+).*\s+end_log_pos ([0-9]+)\s+([^ ]+)/', $line,$matches)) {
 					$this->timeStamp = $matches[1];
+					$this->binlogPosition = $matches[2];
+					$this->binlogServerId = $matches[3];
+				} else {
+					#decoded RBR changes are prefixed with ###				
+					if($prefix == "### I" || $prefix == "### U" || $prefix == "### D") {
+						if(preg_match('/### (UPDATE|INSERT INTO|DELETE FROM)\s([^.]+)\.(.*$)/', $line, $matches)) {
+							$this->db          = $matches[2];
+							$this->base_table  = $matches[3];
+						
+							if($this->db == 'flexviews' && $this->base_table == 'mvlogs') {
+								refresh_mvlog_cache();
+							}
+		
+							if(!empty($this->mvlogList[$this->db . $this->base_table])) {
+								$this->mvlog_table = $this->mvlogList[$this->db . $this->base_table];
+								$lastLine = process_rowlog($proc);
+								continue;
+							}
+						}
+					} 
 				}
-			}
-			 
-
-			if($prefix=="# End" || (substr($line, 0, 6) == "COMMIT"))  {
-				$this->commit_transaction();
-			}
-
-		}
 		 
-	}	
+			}	else {
+				
+				if($binlogStatement) {
+					$binlogStatement .= " ";
+				}
+				$binlogStatement .= $line;
+				if(substr($line,-1 * strlen($this->delimiter) == $this->delimiter)) {
+					#this is a statement
+					$this->statement($binlogStatement);
+					$binlogStatement = "";
+				} 
+			}
+		}
+	}
 	
 	function process_rowlog($proc) {
 		$sql = "";
