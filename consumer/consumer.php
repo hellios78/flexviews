@@ -2,9 +2,17 @@
 <?php
 error_reporting(E_ALL);
 
-class FlexConsumer {
+class FlexCDC {
+	static function concat() {
+    	$result = "";
+    	for ($i = 0;$i < func_num_args();$i++) {
+      		$result .= func_get_arg($i) . " ";
+    	}
+    	return $result;
+  	}
+	private $mvlogDB = NULL;
 	private	$mvlogList = array();
-	private $settings = array();
+	
 	private $onlyDatabases = array();
 	private $cmdLine;
 
@@ -17,20 +25,25 @@ class FlexConsumer {
 	
 	public  $raiseWarnings = true;
 	
+	public function get_source() {
+		return $this->source;
+	}
+	public function get_dest() {
+		return $this->dest;
+	}
 	#Construct a new consumer object.
 	#By default read settings from the INI file unless they are passed
 	#into the constructor	
 	public function __construct($settings = NULL) {
-		if($settings) {
-			$this->settings = $settings;	
-		} else {
-			$this->read_settings();
+		
+		if(!$settings) {
+			$settings = $this->read_settings();
 		}
 		if(!$this->cmdLine) $this->cmdLine = `which mysqlbinlog`;
 		
 		#only record changelogs from certain databases?
-		if(!empty($this->settings['flexviews']['only_database'])) {
-			$vals = explode(',', $this->settings['flexviews']['only_databases']);
+		if(!empty($settings['flexcdc']['only_database'])) {
+			$vals = explode(',', $settings['flexcdc']['only_databases']);
 			foreach($vals as $val) {
 				$this->onlyDatabases[] = trim($val);
 			}
@@ -38,18 +51,21 @@ class FlexConsumer {
 		
 		#the mysqlbinlog command line location may be set in the settings
 		#we will autodetect the location if it is not specified explicitly
-		if(!empty($this->settings['flexviews']['mysqlbinlog'])) {
-			$this->cmdLine = $this->settings['flexviews']['mysqlbinlog'];
+		if(!empty($settings['flexcdc']['mysqlbinlog'])) {
+			$this->cmdLine = $settings['flexcdc']['mysqlbinlog'];
 		} 
 		
 		#build the command line from user, host, password, socket options in the ini file in the [source] section
-		foreach($this->settings['source'] as $k => $v) {
+		foreach($settings['source'] as $k => $v) {
 			$this->cmdLine .= " --$k=$v";
 		}
 		
+		#database into which to write mvlogs
+		$this->mvlogDB = $settings['flexcdc']['database'];
+		
 		#shortcuts
-		$S = $this->settings['source'];
-		$D = $this->settings['dest'];
+		$S = $settings['source'];
+		$D = $settings['dest'];
 	
 		/*TODO: support unix domain sockets */
 		$this->source = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password']) or die('Could not connect to MySQL server:' . mysql_error());
@@ -57,17 +73,46 @@ class FlexConsumer {
 	
 	}
 	
-	public function capture_changes() {
+	#Capture changes from the source into the dest
+	public function capture_changes($setup_schema=true) {
 				
-		$this->initialize_dest();
+		$first_run = $this->initialize_dest();
 		$this->get_source_logs();
 		$this->cleanup_logs();
-				
+
+		if($first_run && $setup_schema) {
+			#find the current master position
+			$stmt = mysql_query('FLUSH TABLES WITH READ LOCK', $this->source) or die(mysql_error($this->source));
+			$stmt = mysql_query('SHOW MASTER STATUS', $this->source) or die(mysql_error($this->source));
+			$row = mysql_fetch_assoc($stmt);
+			$stmt = mysql_query('UNLOCK TABLES', $this->source) or die(mysql_error($this->source));
+			
+			mysql_query("BEGIN;", $this->dest);
+			
+			$sql = "UPDATE binlog_consumer_status bcs 
+			           set exec_master_log_pos = master_log_size 
+			         where server_id={$this->serverId} 
+			           AND master_log_file < '{$row['File']}'";
+			$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+
+			$sql = "UPDATE flexviews.binlog_consumer_status bcs 
+			           set exec_master_log_pos = {$row['Position']} 
+			         where server_id={$this->serverId} 
+			           AND master_log_file = '{$row['file']}'";
+			$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+			
+			mysql_query("commit;", $this->dest);
+			
+			return;
+		}
+		
+		#retrieve the list of logs which have not been fully processed
+		#there won't be any logs if we just initialized the consumer above
 		$sql = "SELECT bcs.* 
-		          FROM flexviews.binlog_consumer_status bcs 
-		         where server_id=$serverId 
-		           AND exec_master_log_pos < master_log_size 
-		         order by master_log_file;";
+		          FROM `" . $this->mvlogDB . "`.`binlog_consumer_status` bcs 
+		         WHERE server_id=" . $this->$serverId .  
+		       "   AND exec_master_log_pos < master_log_size 
+		         ORDER BY master_log_file;";
 		
 		echo " -- Finding binary logs to process\n";
 		$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
@@ -92,23 +137,23 @@ class FlexConsumer {
 	}
 	
 	private function read_settings() {
+		
 		if(!empty($argv[1])) {
 			$iniFile = $argv[1];
 		} else {
 			$iniFile = "./consumer.ini";
 		}
 	
-		$this->settings=@parse_ini_file($iniFile,true) or die("Could not read ini file: $iniFile\n");
-		if(!$this->settings || empty($this->settings['flexviews'])) {
-			die("Could not find [flexviews] section or .ini file not found");
+		$settings=@parse_ini_file($iniFile,true) or die("Could not read ini file: $iniFile\n");
+		if(!$settings || empty($settings->settings['flexcdc'])) {
+			die("Could not find [flexcdc] section or .ini file not found");
 		}
 
-
-	
 	}
 
 	
 	private function refresh_mvlog_cache() {
+		
 		$this->mvlogList = array();
 			
 		$sql = "SELECT table_schema, table_name, mvlog_name from flexviews.mvlogs where active_flag=1";
@@ -120,22 +165,45 @@ class FlexConsumer {
 	
 	/* Set up the destination connection */
 	function initialize_dest() {
-		mysql_query("USE flexviews",$this->dest);
-		mysql_query("BEGIN;", $this->dest) or die(mysql_error());
-		mysql_query("CREATE TEMPORARY table flexviews.log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
-	
+		$return = 0;
+		mysql_select_db($this->mvlogDB,$this->dest) or die('Could not USE DATABASE:' . $this->mvlogDB . "\n");
+		
+		mysql_query("CREATE TABLE 
+		             IF NOT EXISTS 
+					 mvlogs (table_schema varchar(50), 
+                             table_name varchar(50), 
+                             mvlog_name varchar(50),
+                             active_flag boolean default true
+                     ) ENGINE=INNODB DEFAULT CHARSET=utf8;"
+		) or die('COULD NOT CREATE TABLE mvlogs: ' . mysql_error($this->dest) . "\n");; 
 
-	
+
+		mysql_query("CREATE TABLE 
+		             IF NOT EXISTS
+					 `binlog_consumer_status` (
+  					 	`server_id` int not null, 
+  						`master_log_file` varchar(100) NOT NULL DEFAULT '',
+  						`master_log_size` int(11) DEFAULT NULL,
+  						`exec_master_log_pos` int(11) default null,
+  						PRIMARY KEY (`server_id`, `master_log_file`)
+					  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+		) or die('COULD NOT CREATE TABLE binlog_consumer_status: ' . mysql_error($this->dest) . "\n");
+		
+		#return 1 if the table already existed
+		$stmt = mysql_query('SHOW WARNINGS', $this->dest) or die(mysql_error());
+		$row = mysql_fetch_assoc($stmt);
+		if($row) $return = 1;
+		
+		mysql_query("BEGIN;", $this->dest) or die(mysql_error());
+		mysql_query("CREATE TEMPORARY table log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
 		$stmt = mysql_query("SET SQL_LOG_BIN=0", $this->dest);
 		if(!$stmt) die(mysql_error());
 		
-		$stmt = mysql_query("SELECT flexviews.get_setting('mvlog_db')", $dest) or die ("Could not determine mvlog DB\n" . mysql_error());
-		$row = mysql_fetch_array($stmt);
-		$this->mvlogDB = $row[0];
-		
+		return $return;
 	}
 	
 	/* Get the list of logs from the source and place them into a temporary table on the dest*/
+	
 	function get_source_logs() {
 		/* This server id is not related to the server_id in the log.  It refers to the ID of the 
 		 * machine we are reading logs from.
@@ -159,15 +227,19 @@ class FlexConsumer {
 	
 	/* Remove any logs that have gone away */
 	function cleanup_logs() {
+		
 		// TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
-		$sql = "DELETE bcs.* FROM flexviews.binlog_consumer_status bcs where server_id={$this->serverId} AND master_log_file not in (select log_name from log_list)";
+		$sql = "DELETE bcs.* FROM binlog_consumer_status bcs where server_id={$this->serverId} AND master_log_file not in (select log_name from log_list)";
 		mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 
 		$sql = "DROP TEMPORARY table log_list";
 		mysql_query($sql, $this->dest) or die("Could not drop TEMPORARY TABLE log_list\n");
+		
 	}
 
+	/* Update the binlog_consumer_status table to indicate where we have executed to. */
 	function set_capture_pos() {
+		
 		$sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = %d",$this->serverId, $this->binlogPosition, $this->logName);
 		mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
 		
@@ -175,6 +247,7 @@ class FlexConsumer {
 
 	/* Called when a new transaction starts*/
 	function start_transaction() {
+		
 		mysql_query("START TRANSACTION", $this->dest) or die("COULD NOT START TRANSACTION;\n" . mysql_error());
         $this->set_capture_pos();
 		$sql = sprintf("INSERT INTO flexviews.mview_uow values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'));",rtrim($this->timeStamp));
@@ -185,17 +258,19 @@ class FlexConsumer {
 
 	}
 
+    
     /* Called when a transaction commits */
 	function commit_transaction() {
+		
 		$this->set_capture_pos();
 		mysql_query("COMMIT", $this->dest) or die("COULD NOT COMMIT TRANSACTION;\n" . mysql_error());
 	}
 
 	/* Called when a transaction rolls back */
 	function rollback_transaction() {
+		
 		mysql_query("ROLLBACK", $this->dest) or die("COULD NOT ROLLBACK TRANSACTION;\n" . mysql_error());
-		#update the capture position and commit, because we don't want to keep reading a rolled back 
-		#transaction in the log, if it is the last thing in the log
+		#update the capture position and commit, because we don't want to keep reading a truncated log
 		$this->set_capture_pos();
 		mysql_query("COMMIT", $this->dest) or die("COULD NOT COMMIT TRANSACTION LOG POSITION UPDATE;\n" . mysql_error());
 		
@@ -203,20 +278,20 @@ class FlexConsumer {
 
 	/* Called when a row is deleted, or for the old image of an UPDATE */
 	function delete_row($mvLogDB, $mvLogTable, $row = array()) {
-		$valList .= "(1, @fv_uow_id, {$this->serverId}," . implode(",", $row) . ")";
-		$sql = sprintf("INSERT INTO %s.`%s` VALUES %s", $mvLogDB, $mvLogTable, $valList );
+		$valList .= "(1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $row) . ")";
+		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $mvLogDB, $mvLogTable, $valList );
 		mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
 	}
 
 	/* Called when a row is inserted, or for the new image of an UPDATE */
 	function insert_row($mvLogDB, $mvLogTable, $row = array()) {
-		$valList .= "(1, @fv_uow_id, $this->serverId," . implode(",", $row) . ")";
-		$sql = sprintf("INSERT INTO %s.`%s` VALUES %s", $mvLogDB, $mvLogTable, $valList );
+		$valList .= "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
+		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $mvLogDB, $mvLogTable, $valList );
 		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
 	}
-	
-
-	
+	/* Called for statements in the binlog.  It is possible that this can be called more than
+	 * one time per event.  If there is a SET INSERT_ID, SET TIMESTAMP, etc
+	 */	
 	function statement($sql) {
 
 		$sql = trim($sql);
@@ -250,9 +325,6 @@ class FlexConsumer {
 				
 			#Might be interestested in CREATE TABLE at some point, but not right now.
 			case 'CREATE':
-				/* TODO: Eventually we want to be able to auto-register tables for changelogging when they are 
-				 *       created.
-				 */
 				break;
 
 			#DML IS BAD....... :(
@@ -289,6 +361,7 @@ class FlexConsumer {
 	}
 	
 	function process_binlog($proc) {
+		
 		static $mvlogDB = false;
 		$this->timeStamp = false;
 
@@ -333,14 +406,18 @@ class FlexConsumer {
 							$this->base_table  = $matches[3];
 						
 							if($this->db == 'flexviews' && $this->base_table == 'mvlogs') {
-								refresh_mvlog_cache();
+								$this->refresh_mvlog_cache();
 							}
 		
-							if(!empty($this->mvlogList[$this->db . $this->base_table])) {
-								$this->mvlog_table = $this->mvlogList[$this->db . $this->base_table];
-								$lastLine = process_rowlog($proc);
-								continue;
+							if(empty($this->mvlogList[$this->db . $this->base_table])) {
+								if($this-auto_changelog) {
+								 	$this->create_mvlog($this->db, $this->base_table);  
+								 	$this->refresh_mvlog_cache();
+								}
 							}
+							$this->mvlog_table = $this->mvlogList[$this->db . $this->base_table];
+							$lastLine = process_rowlog($proc);
+							
 						}
 					} 
 				}
@@ -352,13 +429,14 @@ class FlexConsumer {
 				}
 				$binlogStatement .= $line;
 				if(substr($line,-1 * strlen($this->delimiter) == $this->delimiter)) {
-					#this is a statement
+					#process statement
 					$this->statement($binlogStatement);
 					$binlogStatement = "";
 				} 
 			}
 		}
 	}
+	
 	
 	function process_rowlog($proc) {
 		$sql = "";
@@ -417,6 +495,50 @@ class FlexConsumer {
 		return $line;
 	}
 
+	#AUTOPORTED FROM FLEXVIEWS.CREATE_MVLOG() w/ minor modifications for PHP
+	function create_mvlog($v_schema_name,$v_table_name) { 
+		$v_done=FALSE;
+		$v_column_name=NULL;
+		$v_data_type=NULL;
+		$v_sql=NULL;
+	
+		$cursor_sql = "SELECT COLUMN_NAME, IF(COLUMN_TYPE='TIMESTAMP', 'DATETIME', COLUMN_TYPE) COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='$v_table_name' AND TABLE_SCHEMA = '$v_schema_name'";
+	
+		$cur_columns = mysql_query($cursor_sql, $this->dest);
+		$v_sql = '';
+	
+		while(1) {
+			if( $v_sql != '' ) {
+				$v_sql = FlexCDC::concat($v_sql, ', ');
+			}
+	
+			$row = mysql_fetch_array($cur_columns);
+			if( $row === false ) $v_done = true;
+	
+			if( $row ) {
+				$v_column_name = $row[0];
+				$v_data_type = $row[1];
+			}
+	
+			if( $v_done ) {
+				mysql_free_result($cur_columns);
+				break;
+			}
+	
+			$v_sql = FlexCDC::concat($v_sql, $v_column_name, ' ', $v_data_type);
+		}
+	
+		if( trim( $v_sql ) == "" ) {
+			trigger_error('Could not access table:' . $v_table_name, E_USER_ERROR);
+		}
+			
+		$v_sql = FlexCDC::concat('CREATE TABLE `', $this->mvlogDB ,'`.`' ,$v_schema_name, '_', $v_table_name,'` ( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', $v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
+		$create_stmt = mysql_query($v_sql, $this->dest);
+		if(!$create_stmt) die('COULD NOT CREATE MVLOG. ' . $v_sql . "\n");
+		$exec_sql = " INSERT INTO mvlogs( table_schema , table_name , mvlog_name ) values('$v_schema_name', '$v_table_name', '" . $v_schema_name . "_" . $v_table_name . "')";
+		mysql_query($exec_sql) or die($exec_sql . ':' . mysql_error($this->dest) . "\n");
+	
+	}
 }
 
 

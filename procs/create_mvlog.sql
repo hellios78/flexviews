@@ -54,6 +54,7 @@ BEGIN
   OPEN cur_columns;
   
   SET v_sql = '';
+  
   columnLoop: LOOP
     IF v_sql != '' THEN
       SET v_sql = CONCAT(v_sql, ', ');
