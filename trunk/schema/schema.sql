@@ -38,17 +38,6 @@ CREATE TABLE `mview` (
 
 CREATE TABLE IF NOT EXISTS flexviews.refresh_log(tstamp timestamp, usec int auto_increment,  message TEXT, key(usec));
 
-DROP TABLE IF EXISTS mvlogs;
-CREATE TABLE mvlogs (table_schema varchar(50), table_name varchar(50), mvlog_name varchar(50),active_flag boolean default true) ENGINE=INNODB; 
-
-DROP TABLE IF EXISTS binlog_consumer_status;
-CREATE TABLE `binlog_consumer_status` (
-  `server_id` int not null, 
-  `master_log_file` varchar(100) NOT NULL DEFAULT '',
-  `master_log_size` int(11) DEFAULT NULL,
-  `exec_master_log_pos` int(11) default null,
-  PRIMARY KEY (`server_id`, `master_log_file`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 DROP TABLE IF EXISTS mview_settings;
 CREATE TABLE mview_settings(

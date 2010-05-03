@@ -21,19 +21,19 @@
 
 
 function tokenize($sql) {
-  if(!$sql) return;
-  $sql = trim($sql, ';');
-
-$regex = <<<'END_OF_REGEX'
-/
-  [A-Za-z_.]+\(.*?\)+   # Match FUNCTION(...)
-  |\(.*?\)+             # Match grouped items
-  |"[^"](?:|\"|"")*?"+
-  |'[^'](?:|\'|'')*?'+
-  |`(?:[^`]|``)*`+
-  |[^ ,]+
-  |,
-/x
+	if(!$sql) return;
+	$sql = trim($sql, ';');
+  
+	$regex = <<<END_OF_REGEX
+	/
+	  [A-Za-z_.]+\(.*?\)+   # Match FUNCTION(...)
+	  |\(.*?\)+             # Match grouped items
+	  |"[^"](?:|\"|"")*?"+
+	  |'[^'](?:|\'|'')*?'+
+	  |`(?:[^`]|``)*`+
+	  |[^ ,]+
+	  |,
+	/x
 END_OF_REGEX;
 
   preg_match_all($regex, $sql, $matches);
