@@ -25,6 +25,7 @@ class FlexCDC {
 	
 	public  $raiseWarnings = true;
 	
+	public  $delimiter = ';';
 	public function get_source() {
 		return $this->source;
 	}
@@ -68,9 +69,9 @@ class FlexCDC {
 		$D = $settings['dest'];
 	
 		/*TODO: support unix domain sockets */
-		$this->source = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password']) or die('Could not connect to MySQL server:' . mysql_error());
-		$this->dest = mysql_connect($D['host'] . ':' . $D['port'], $D['user'], $D['password']) or die('Could not connect to MySQL server:' . mysql_error());
-	
+		$this->source = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password'], true) or die('Could not connect to MySQL server:' . mysql_error());
+		$this->dest = mysql_connect($D['host'] . ':' . $D['port'], $D['user'], $D['password'], true) or die('Could not connect to MySQL server:' . mysql_error());
+	    
 	}
 	
 	#Capture changes from the source into the dest
@@ -95,25 +96,25 @@ class FlexCDC {
 			           AND master_log_file < '{$row['File']}'";
 			$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
 
-			$sql = "UPDATE flexviews.binlog_consumer_status bcs 
+			$sql = "UPDATE binlog_consumer_status bcs 
 			           set exec_master_log_pos = {$row['Position']} 
 			         where server_id={$this->serverId} 
-			           AND master_log_file = '{$row['file']}'";
+			           AND master_log_file = '{$row['File']}'";
 			$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
 			
 			mysql_query("commit;", $this->dest);
 			
-			return;
 		}
 		
 		#retrieve the list of logs which have not been fully processed
 		#there won't be any logs if we just initialized the consumer above
 		$sql = "SELECT bcs.* 
 		          FROM `" . $this->mvlogDB . "`.`binlog_consumer_status` bcs 
-		         WHERE server_id=" . $this->$serverId .  
+		         WHERE server_id=" . $this->serverId .  
 		       "   AND exec_master_log_pos < master_log_size 
 		         ORDER BY master_log_file;";
 		
+	
 		echo " -- Finding binary logs to process\n";
 		$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 		$processedLogs = 0;
@@ -156,7 +157,7 @@ class FlexCDC {
 		
 		$this->mvlogList = array();
 			
-		$sql = "SELECT table_schema, table_name, mvlog_name from flexviews.mvlogs where active_flag=1";
+		$sql = "SELECT table_schema, table_name, mvlog_name from mvlogs where active_flag=1";
 		$stmt = mysql_query($sql, $this->dest);
 		while($row = mysql_fetch_array($stmt)) {
 			$this->mvlogList[$row[0] . $row[1]] = $row[3];
@@ -166,7 +167,10 @@ class FlexCDC {
 	/* Set up the destination connection */
 	function initialize_dest() {
 		$return = 0;
-		mysql_select_db($this->mvlogDB,$this->dest) or die('Could not USE DATABASE:' . $this->mvlogDB . "\n");
+		if(!mysql_select_db($this->mvlogDB,$this->dest)) {
+			 mysql_query('CREATE DATABASE ' . $this->mvlogDB) or die('Could not CREATE DATABASE ' . $this->mvlogDB . "\n");
+			 
+		}
 		
 		mysql_query("CREATE TABLE 
 		             IF NOT EXISTS 
@@ -175,7 +179,7 @@ class FlexCDC {
                              mvlog_name varchar(50),
                              active_flag boolean default true
                      ) ENGINE=INNODB DEFAULT CHARSET=utf8;"
-		) or die('COULD NOT CREATE TABLE mvlogs: ' . mysql_error($this->dest) . "\n");; 
+		            , $this->dest) or die('COULD NOT CREATE TABLE mvlogs: ' . mysql_error($this->dest) . "\n");; 
 
 
 		mysql_query("CREATE TABLE 
@@ -187,7 +191,7 @@ class FlexCDC {
   						`exec_master_log_pos` int(11) default null,
   						PRIMARY KEY (`server_id`, `master_log_file`)
 					  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
-		) or die('COULD NOT CREATE TABLE binlog_consumer_status: ' . mysql_error($this->dest) . "\n");
+		            , $this->dest) or die('COULD NOT CREATE TABLE binlog_consumer_status: ' . mysql_error($this->dest) . "\n");
 		
 		#return 1 if the table already existed
 		$stmt = mysql_query('SHOW WARNINGS', $this->dest) or die(mysql_error());
@@ -217,10 +221,10 @@ class FlexCDC {
 		if(!$stmt) die(mysql_error());
 	
 		while($row = mysql_fetch_array($stmt)) {
-			$sql = sprintf("INSERT INTO flexviews.binlog_consumer_status (server_id, master_log_file, master_log_size, exec_master_log_pos) values ($serverId, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $row['Log_name'], $row['File_size'], $row['File_size']);
+			$sql = sprintf("INSERT INTO binlog_consumer_status (server_id, master_log_file, master_log_size, exec_master_log_pos) values (%d, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $this->serverId,$row['Log_name'], $row['File_size'], $row['File_size']);
 			mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 	
-			$sql = sprintf("INSERT INTO log_list (log_name) values ('%s')", $row[0]);
+			$sql = sprintf("INSERT INTO log_list (log_name) values ('%s')", $row['Log_name']);
 			mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 		}
 	}
@@ -240,8 +244,8 @@ class FlexCDC {
 	/* Update the binlog_consumer_status table to indicate where we have executed to. */
 	function set_capture_pos() {
 		
-		$sql = sprintf("UPDATE flexviews.binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = %d",$this->serverId, $this->binlogPosition, $this->logName);
-		mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
+		$sql = sprintf("UPDATE binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = %d",$this->serverId, $this->binlogPosition, $this->logName);
+		mysql_query($sql, $this->dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error($this->dest));
 		
 	}
 
@@ -250,11 +254,11 @@ class FlexCDC {
 		
 		mysql_query("START TRANSACTION", $this->dest) or die("COULD NOT START TRANSACTION;\n" . mysql_error());
         $this->set_capture_pos();
-		$sql = sprintf("INSERT INTO flexviews.mview_uow values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'));",rtrim($this->timeStamp));
-		mysql_query($sql,$dest) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
+		$sql = sprintf("INSERT INTO mview_uow values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'));",rtrim($this->timeStamp));
+		mysql_query($sql,$this->dest) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
 		 
 		$sql = "SET @fv_uow_id := LAST_INSERT_ID();";
-		mysql_query($sql, $dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error());
+		mysql_query($sql, $this->dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error($this->dest));
 
 	}
 
@@ -293,21 +297,37 @@ class FlexCDC {
 	 * one time per event.  If there is a SET INSERT_ID, SET TIMESTAMP, etc
 	 */	
 	function statement($sql) {
-
 		$sql = trim($sql);
-		preg_match("/^[/*!0-9-]*([A-Za-z])+\s*(.*)$/", $sql, $matches);
+		echo "STATEMENT: $sql\n";
+		#TODO: Not sure  if this might be important..
+		#      In general, I think we need to worry about character
+		#      set way more than we do (which is not at all)
+		if(substr($sql,0,6) == '/*!\C ') {
+			return;
+		}
+		
+		if($sql[0] == '/') {
+			$end_comment = strpos($sql, ' ');
+			$sql = trim(substr($sql, $end_comment, strlen($sql) - $end_comment));
+		}
+		
+		preg_match("/([^ ]+)(.*)/", $sql, $matches);
+		
+		//print_r($matches);
 		
 		$command = $matches[1];
+		$command = str_replace($this->delimiter,'', $command);
 		$args = $matches[2];
 		
-		switch($command) {
+		switch(strtoupper($command)) {
 			#register change in delimiter so that we properly capture statements
 			case 'DELIMITER':
 				$this->delimiter = trim($args);
 				break;
 				
-			#ignore SET for now.  I don't think we need it for anything.
+			#ignore SET and USE for now.  I don't think we need it for anything.
 			case 'SET':
+			case 'USE':	
 				break;
 				
 			#NEW TRANSACTION
@@ -361,8 +381,7 @@ class FlexCDC {
 	}
 	
 	function process_binlog($proc) {
-		
-		static $mvlogDB = false;
+		$binlogStatement="";
 		$this->timeStamp = false;
 
 		$this->refresh_mvlog_cache();
@@ -405,7 +424,7 @@ class FlexCDC {
 							$this->db          = $matches[2];
 							$this->base_table  = $matches[3];
 						
-							if($this->db == 'flexviews' && $this->base_table == 'mvlogs') {
+							if($this->db == $this->mvlogDB && $this->base_table == 'mvlogs') {
 								$this->refresh_mvlog_cache();
 							}
 		
@@ -428,7 +447,8 @@ class FlexCDC {
 					$binlogStatement .= " ";
 				}
 				$binlogStatement .= $line;
-				if(substr($line,-1 * strlen($this->delimiter) == $this->delimiter)) {
+				
+				if(strpos($binlogStatement, $this->delimiter, strlen($binlogStatement)-strlen($this->delimiter)-1) !== false)  {
 					#process statement
 					$this->statement($binlogStatement);
 					$binlogStatement = "";
