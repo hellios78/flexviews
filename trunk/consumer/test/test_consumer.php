@@ -1,5 +1,10 @@
 <?php 
 require_once('../consumer.php');
+/*
+$cdc = new FlexCDC(	parse_ini_file('./test_consumer.ini', true));
+$cdc->capture_changes();
+exit;
+*/
 
 class ConsumerTest extends PHPUnit_Framework_TestCase
 {   
@@ -10,7 +15,7 @@ class ConsumerTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('FlexCDC', get_class($cdc));
  
         $this->assertTrue($cdc->get_source() && $cdc->get_dest());
-        
+        $cdc->raiseWarnings = false;
         return $cdc;
         
     }
@@ -22,6 +27,7 @@ class ConsumerTest extends PHPUnit_Framework_TestCase
     {   
     	$conn = $cdc->get_source();
     	$this->assertFalse(!mysql_query('RESET MASTER', $conn));
+    	$cdc->capture_changes();
         $this->assertTrue(mysql_query('DROP DATABASE IF EXISTS test', $conn));
         $this->assertTrue(mysql_query('CREATE DATABASE test', $conn));
         $this->assertTrue(mysql_query('CREATE TABLE test.t1(c1 int) engine=innodb', $conn));                
