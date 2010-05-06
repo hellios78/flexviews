@@ -6,10 +6,11 @@ class FlexCDC {
 	static function concat() {
     	$result = "";
     	for ($i = 0;$i < func_num_args();$i++) {
-      		$result .= func_get_arg($i) . " ";
+      		$result .= func_get_arg($i);
     	}
     	return $result;
   	}
+  	
 	private $mvlogDB = NULL;
 	private	$mvlogList = array();
 	
@@ -29,6 +30,7 @@ class FlexCDC {
 	public function get_source() {
 		return $this->source;
 	}
+	
 	public function get_dest() {
 		return $this->dest;
 	}
@@ -64,6 +66,7 @@ class FlexCDC {
 		#database into which to write mvlogs
 		$this->mvlogDB = $settings['flexcdc']['database'];
 		
+		$this->auto_changelog = $settings['flexcdc']['auto_changelog'];		
 		#shortcuts
 		$S = $settings['source'];
 		$D = $settings['dest'];
@@ -73,39 +76,84 @@ class FlexCDC {
 		$this->dest = mysql_connect($D['host'] . ':' . $D['port'], $D['user'], $D['password'], true) or die('Could not connect to MySQL server:' . mysql_error());
 	    
 	}
-	
+
+	private function initialize() {
+		$this->initialize_dest();
+		$this->get_source_logs();
+		$this->cleanup_logs();
+		
+	}
+	public function setup() {
+		$sql = "SELECT @@server_id";
+		$stmt = mysql_query($sql, $this->source);
+		$row = mysql_fetch_array($stmt);
+		$this->serverId = $row[0];
+		if(!mysql_select_db($this->mvlogDB,$this->dest)) {
+			 mysql_query('CREATE DATABASE ' . $this->mvlogDB) or die('Could not CREATE DATABASE ' . $this->mvlogDB . "\n");
+			 mysql_select_db($this->mvlogDB,$this->dest);
+		}
+		
+		mysql_query("CREATE TABLE 
+		             IF NOT EXISTS 
+					 mvlogs (table_schema varchar(50), 
+                             table_name varchar(50), 
+                             mvlog_name varchar(50),
+                             active_flag boolean default true
+                     ) ENGINE=INNODB DEFAULT CHARSET=utf8;"
+		            , $this->dest) or die('COULD NOT CREATE TABLE mvlogs: ' . mysql_error($this->dest) . "\n"); 
+
+		mysql_query("CREATE TABLE IF NOT EXISTS `mview_uow` (
+					  `uow_id` BIGINT AUTO_INCREMENT,
+					  `commit_time` TIMESTAMP,
+					  PRIMARY KEY(`uow_id`),
+					  KEY `commit_time` (`commit_time`)
+					) ENGINE=InnoDB DEFAULT CHARSET=latin1;"
+			    , $this->dest) or die('COULD NOT CREATE TABLE mview_uow: ' . mysql_error($this->dest) . "\n");
+
+
+		mysql_query("CREATE TABLE 
+		             IF NOT EXISTS
+					 `binlog_consumer_status` (
+  					 	`server_id` int not null, 
+  						`master_log_file` varchar(100) NOT NULL DEFAULT '',
+  						`master_log_size` int(11) DEFAULT NULL,
+  						`exec_master_log_pos` int(11) default null,
+  						PRIMARY KEY (`server_id`, `master_log_file`)
+					  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+		            , $this->dest) or die('COULD NOT CREATE TABLE binlog_consumer_status: ' . mysql_error($this->dest) . "\n");
+		
+		
+		#find the current master position
+		$stmt = mysql_query('FLUSH TABLES WITH READ LOCK', $this->source) or die(mysql_error($this->source));
+		$stmt = mysql_query('SHOW MASTER STATUS', $this->source) or die(mysql_error($this->source));
+		$row = mysql_fetch_assoc($stmt);
+		$stmt = mysql_query('UNLOCK TABLES', $this->source) or die(mysql_error($this->source));
+		$this->initialize();
+				
+		mysql_query("BEGIN;", $this->dest);
+		
+		
+		$sql = "UPDATE binlog_consumer_status bcs 
+		           set exec_master_log_pos = master_log_size 
+		         where server_id={$this->serverId} 
+		           AND master_log_file < '{$row['File']}'";
+		$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+
+		$sql = "UPDATE binlog_consumer_status bcs 
+		           set exec_master_log_pos = {$row['Position']} 
+		         where server_id={$this->serverId} 
+		           AND master_log_file = '{$row['File']}'";
+		$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+		
+		mysql_query("commit;", $this->dest);
+		
+			
+	}
 	#Capture changes from the source into the dest
 	public function capture_changes($setup_schema=true) {
 				
-		$first_run = $this->initialize_dest();
-		$this->get_source_logs();
-		$this->cleanup_logs();
+		$this->initialize();
 
-		if($first_run && $setup_schema) {
-			#find the current master position
-			$stmt = mysql_query('FLUSH TABLES WITH READ LOCK', $this->source) or die(mysql_error($this->source));
-			$stmt = mysql_query('SHOW MASTER STATUS', $this->source) or die(mysql_error($this->source));
-			$row = mysql_fetch_assoc($stmt);
-			$stmt = mysql_query('UNLOCK TABLES', $this->source) or die(mysql_error($this->source));
-			
-			mysql_query("BEGIN;", $this->dest);
-			
-			$sql = "UPDATE binlog_consumer_status bcs 
-			           set exec_master_log_pos = master_log_size 
-			         where server_id={$this->serverId} 
-			           AND master_log_file < '{$row['File']}'";
-			$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
-
-			$sql = "UPDATE binlog_consumer_status bcs 
-			           set exec_master_log_pos = {$row['Position']} 
-			         where server_id={$this->serverId} 
-			           AND master_log_file = '{$row['File']}'";
-			$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
-			
-			mysql_query("commit;", $this->dest);
-			
-		}
-		
 		#retrieve the list of logs which have not been fully processed
 		#there won't be any logs if we just initialized the consumer above
 		$sql = "SELECT bcs.* 
@@ -129,7 +177,8 @@ class FlexCDC {
 			$this->logName = $row['master_log_file'];
 			$this->process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos']);
 			#make sure the end of the binary log is captured
-			$this->set_capture_pos();
+#			$this->set_capture_pos();
+
 			pclose($proc);
 		}
 		
@@ -160,50 +209,19 @@ class FlexCDC {
 		$sql = "SELECT table_schema, table_name, mvlog_name from mvlogs where active_flag=1";
 		$stmt = mysql_query($sql, $this->dest);
 		while($row = mysql_fetch_array($stmt)) {
-			$this->mvlogList[$row[0] . $row[1]] = $row[3];
+			$this->mvlogList[$row[0] . $row[1]] = $row[2];
 		}
 	}
 	
 	/* Set up the destination connection */
 	function initialize_dest() {
-		$return = 0;
-		if(!mysql_select_db($this->mvlogDB,$this->dest)) {
-			 mysql_query('CREATE DATABASE ' . $this->mvlogDB) or die('Could not CREATE DATABASE ' . $this->mvlogDB . "\n");
-			 
-		}
 		
-		mysql_query("CREATE TABLE 
-		             IF NOT EXISTS 
-					 mvlogs (table_schema varchar(50), 
-                             table_name varchar(50), 
-                             mvlog_name varchar(50),
-                             active_flag boolean default true
-                     ) ENGINE=INNODB DEFAULT CHARSET=utf8;"
-		            , $this->dest) or die('COULD NOT CREATE TABLE mvlogs: ' . mysql_error($this->dest) . "\n");; 
-
-
-		mysql_query("CREATE TABLE 
-		             IF NOT EXISTS
-					 `binlog_consumer_status` (
-  					 	`server_id` int not null, 
-  						`master_log_file` varchar(100) NOT NULL DEFAULT '',
-  						`master_log_size` int(11) DEFAULT NULL,
-  						`exec_master_log_pos` int(11) default null,
-  						PRIMARY KEY (`server_id`, `master_log_file`)
-					  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
-		            , $this->dest) or die('COULD NOT CREATE TABLE binlog_consumer_status: ' . mysql_error($this->dest) . "\n");
-		
-		#return 1 if the table already existed
-		$stmt = mysql_query('SHOW WARNINGS', $this->dest) or die(mysql_error());
-		$row = mysql_fetch_assoc($stmt);
-		if($row) $return = 1;
 		
 		mysql_query("BEGIN;", $this->dest) or die(mysql_error());
 		mysql_query("CREATE TEMPORARY table log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
 		$stmt = mysql_query("SET SQL_LOG_BIN=0", $this->dest);
 		if(!$stmt) die(mysql_error());
 		
-		return $return;
 	}
 	
 	/* Get the list of logs from the source and place them into a temporary table on the dest*/
@@ -243,15 +261,14 @@ class FlexCDC {
 
 	/* Update the binlog_consumer_status table to indicate where we have executed to. */
 	function set_capture_pos() {
+		$sql = sprintf("UPDATE binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = %d", $this->binlogPosition, $this->logName, $this->serverId);
 		
-		$sql = sprintf("UPDATE binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = %d",$this->serverId, $this->binlogPosition, $this->logName);
 		mysql_query($sql, $this->dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error($this->dest));
 		
 	}
 
 	/* Called when a new transaction starts*/
 	function start_transaction() {
-		
 		mysql_query("START TRANSACTION", $this->dest) or die("COULD NOT START TRANSACTION;\n" . mysql_error());
         $this->set_capture_pos();
 		$sql = sprintf("INSERT INTO mview_uow values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'));",rtrim($this->timeStamp));
@@ -265,14 +282,13 @@ class FlexCDC {
     
     /* Called when a transaction commits */
 	function commit_transaction() {
-		
+		//TODO: support BULK INSERT	
 		$this->set_capture_pos();
 		mysql_query("COMMIT", $this->dest) or die("COULD NOT COMMIT TRANSACTION;\n" . mysql_error());
 	}
 
 	/* Called when a transaction rolls back */
 	function rollback_transaction() {
-		
 		mysql_query("ROLLBACK", $this->dest) or die("COULD NOT ROLLBACK TRANSACTION;\n" . mysql_error());
 		#update the capture position and commit, because we don't want to keep reading a truncated log
 		$this->set_capture_pos();
@@ -281,16 +297,19 @@ class FlexCDC {
 	}
 
 	/* Called when a row is deleted, or for the old image of an UPDATE */
-	function delete_row($mvLogDB, $mvLogTable, $row = array()) {
-		$valList .= "(1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $row) . ")";
-		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $mvLogDB, $mvLogTable, $valList );
-		mysql_query($sql, $dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
+	function delete_row() {
+		//TODO: support BULK INSERT
+		$valList = "(-1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $this->row) . ")";
+		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
+		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
 	}
 
 	/* Called when a row is inserted, or for the new image of an UPDATE */
-	function insert_row($mvLogDB, $mvLogTable, $row = array()) {
-		$valList .= "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
-		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $mvLogDB, $mvLogTable, $valList );
+	function insert_row() {
+
+        //TODO: support BULK INSERT
+		$valList = "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $this->row) . ")";
+		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
 		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
 	}
 	/* Called for statements in the binlog.  It is possible that this can be called more than
@@ -298,7 +317,6 @@ class FlexCDC {
 	 */	
 	function statement($sql) {
 		$sql = trim($sql);
-		echo "STATEMENT: $sql\n";
 		#TODO: Not sure  if this might be important..
 		#      In general, I think we need to worry about character
 		#      set way more than we do (which is not at all)
@@ -413,10 +431,11 @@ class FlexCDC {
 			#Control information from MySQLbinlog is prefixed with a hash comment.
 			if($prefix[0] == "#") {
 				$binlogStatement = "";
-				if (preg_match('/^#([0-9: ]+).*\s+end_log_pos ([0-9]+)\s+([^ ]+)/', $line,$matches)) {
+				if (preg_match('/^#([0-9]+ [^ ]+)\s+server\s+id\s+([0-9]+)\s+end_log_pos ([0-9]+).*/', $line,$matches)) {
 					$this->timeStamp = $matches[1];
-					$this->binlogPosition = $matches[2];
-					$this->binlogServerId = $matches[3];
+					$this->binlogPosition = $matches[3];
+					$this->binlogServerId = $matches[2];
+					$this->set_capture_pos();
 				} else {
 					#decoded RBR changes are prefixed with ###				
 					if($prefix == "### I" || $prefix == "### U" || $prefix == "### D") {
@@ -429,13 +448,13 @@ class FlexCDC {
 							}
 		
 							if(empty($this->mvlogList[$this->db . $this->base_table])) {
-								if($this-auto_changelog) {
+								if($this->auto_changelog) {
 								 	$this->create_mvlog($this->db, $this->base_table);  
 								 	$this->refresh_mvlog_cache();
 								}
 							}
 							$this->mvlog_table = $this->mvlogList[$this->db . $this->base_table];
-							$lastLine = process_rowlog($proc);
+							$lastLine = $this->process_rowlog($proc, $line);
 							
 						}
 					} 
@@ -447,8 +466,8 @@ class FlexCDC {
 					$binlogStatement .= " ";
 				}
 				$binlogStatement .= $line;
-				
-				if(strpos($binlogStatement, $this->delimiter, strlen($binlogStatement)-strlen($this->delimiter)-1) !== false)  {
+				$pos=false;				
+				if(($pos = strpos($binlogStatement, $this->delimiter)) !== false)  {
 					#process statement
 					$this->statement($binlogStatement);
 					$binlogStatement = "";
@@ -460,9 +479,8 @@ class FlexCDC {
 	
 	function process_rowlog($proc) {
 		$sql = "";
-		$line = "";
 		$skip_rows = false;
-
+		$line = "";
 		#if there is a list of databases, and this database is not on the list
 		#then skip the rows
 		if(!empty($this->onlyDatabases) && empty($this->onlyDatabases[trim($this->db)])) {
@@ -470,42 +488,67 @@ class FlexCDC {
 		}
 
 		# loop over the input, collecting all the input values into a set of INSERT statements
-		$row = array();
+		$this->row = array();
 		$mode = 0;
 		
 		while($line = fgets($proc)) {
-			#echo "***$line";
-			$line = trim($line);
-			
+			$line = trim($line);	
             #DELETE and UPDATE statements contain a WHERE clause with the OLD row image
 			if($line == "### WHERE") {
+				if(!empty($this->row)) {
+					switch($mode) {
+						case -1:
+							$this->delete_row();
+							break;
+						case 1:
+							$this->insert_row();
+							break;
+						default:
+							die('UNEXPECTED MODE IN PROCESS_ROWLOG!');
+					}
+					$this->row = array();
+				}
 				$mode = -1;
 				
 			#INSERT and UPDATE statements contain a SET clause with the NEW row image
 			} elseif($line == "### SET")  {
+				if(!empty($this->row)) {
+					switch($mode) {
+						case -1:
+							$this->delete_row();
+							break;
+						case 1:
+							$this->insert_row();
+							break;
+						default:
+							die('UNEXPECTED MODE IN PROCESS_ROWLOG!');
+					}
+					$this->row = array();
+				}
 				$mode = 1;
 			
 			#Row images are in format @1 = 'abc'
 			#                         @2 = 'def'
 			#Where @1, @2 are the column number in the table	
 			} elseif(preg_match('/###\s+@[0-9]+=(.*)$/', $line, $matches)) {
-				$row[] = $val;
+				$this->row[] = $matches[1];
 
 			#This line does not start with ### so we are at the end of the images	
 			} else {
+				#echo ":: $line\n";
 				if(!$skip_rows) {
 					switch($mode) {
 						case -1:
-							$this->delete_row($mvLogDB, $table, $row);
+							$this->delete_row();
 							break;
 						case 1:
-							$this->insert_row($mvLogDB, $table, $row);
+							$this->insert_row();
 							break;
 						default:
 							die('UNEXPECTED MODE IN PROCESS_ROWLOG!');
 					}					
 				} 
-				$row = array();
+				$this->row = array();
 				break; #out of while
 			}
 			#keep reading lines
