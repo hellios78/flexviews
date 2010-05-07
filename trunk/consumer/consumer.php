@@ -11,6 +11,23 @@ class FlexCDC {
     	return $result;
   	}
   	
+  	static function split_sql($sql) {
+		$regex=<<<EOREGEX
+/
+|(\(.*?\))   # Match FUNCTION(...) OR BAREWORDS
+|("[^"](?:|\"|"")*?"+)
+|('[^'](?:|\'|'')*?'+)
+|(`(?:[^`]|``)*`+)
+|([^ ,]+)
+/x
+EOREGEX
+;
+		$tokens = preg_split($regex, $sql,-1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE);
+		return $tokens;	
+
+	}
+  	
+  	
 	private $mvlogDB = NULL;
 	private	$mvlogList = array();
 	
@@ -378,8 +395,53 @@ class FlexCDC {
 			#ALTER we can deal with via some clever regex, when I get to it.  Need a test case
 			#with some complex alters
 			case 'ALTER':
-				/* TODO: If the table is not being logged, ignore ALTER on it...  If it is being logged, modify ALTER appropriately and apply to the log.*/ 
-				if($this->raiseWarnings) trigger_error('Detected ALTER on a table!  This may break CDC.  Alter the log table manually if necessary.' , E_USER_WARNING);
+				/* TODO: If the table is not being logged, ignore ALTER on it...  If it is being logged, modify ALTER appropriately and apply to the log.*/
+				$tokens = FlexCDC::split_sql($sql);
+				$is_alter_table = -1;
+				foreach($tokens as $key => $token) {
+					if(strtoupper($token) == 'TABLE') {
+						$is_alter_table = $key;
+						break;
+					}
+				}
+				preg_match('/\s+table\s+([^ ]+)/', $sql, $matches);
+				$new_clause = "";
+				if(empty($this->mvlogList[str_replace('.','',trim($matches[1]))])) {
+					return;
+				}
+				$this->mvlog_table = $this->mvlogList[str_replace('.','',$matches[1])];
+				if($is_alter_table>-1) {
+					$clauses = array();
+					$clause = "";
+
+					for($i=$is_alter_table+4;$i<count($tokens);++$i) {
+
+						#grab each alteration clause (like add column, add key or drop column)
+						if($tokens[$i] == ',') {
+							$clause = trim(str_replace($this->delimiter, '', $clause));
+							if(preg_match('/^ADD KEY|^ADD INDEX|^DROP KEY|^DROP INDEX|^ADD PRIMARY|^DROP PRIMARY/i', $clause)) {
+								$clause = "";
+								continue;
+							}
+							if($new_clause) $new_clause .= ', ';
+							$new_clause .= $clause;
+							$clause = "";
+						} else {
+							$clause .= $tokens[$i]; 
+						}
+						
+					}	
+
+					$clause = trim(str_replace($this->delimiter, '', $clause));
+					if(!preg_match('/^ADD KEY|^ADD INDEX|^DROP KEY|^DROP INDEX|^ADD PRIMARY|^DROP PRIMARY/i', $clause)) {
+						if($new_clause) $new_clause .= ', ';
+						$new_clause .= $clause;
+					}
+					$new_alter = 'ALTER TABLE ' . $this->mvlog_table . ' ' . $new_clause;
+					echo "RUNNING ALTER: $new_alter\n";
+					mysql_query($new_alter, $this->dest) or die($new_alter. "\n" . mysql_error($this->dest) . "\n");
+				}	
+											 
 				break;
 
 			#DROP probably isn't bad.  We might be left with an orphaned change log.	
@@ -397,6 +459,14 @@ class FlexCDC {
 				break;
 		}
 	}
+	
+	static function ignore_clause($clause) {
+		$clause = trim($clause);
+		if(preg_match('/^(?:ADD|DROP)\s+(?:PRIMARY KEY|KEY|INDEX)')) {
+			return true;
+		}
+		return false;
+	} 
 	
 	function process_binlog($proc) {
 		$binlogStatement="";
@@ -603,5 +673,4 @@ class FlexCDC {
 	
 	}
 }
-
 
