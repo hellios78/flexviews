@@ -81,6 +81,9 @@ class ConsumerTest extends PHPUnit_Framework_TestCase
 		$this->assertEquals($row[0], 0);
 		$this->assertEquals($row[1], 84);
     	$this->assertEquals($row[2], 12);
+    	$this->assertTrue(mysql_query('alter table test.t1 modify c1 bigint, add c2 int, add key (c1,c2)', $conn));
+    	$this->assertTrue(mysql_query('INSERT INTO test.t1(c1,c2) values (1,1),(2,2),(3,NULL)', $conn));
+        $cdc->capture_changes();
     }
  
     
