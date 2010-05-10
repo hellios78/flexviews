@@ -1,4 +1,3 @@
-#!/usr/local/bin/php
 <?php
 error_reporting(E_ALL);
 
@@ -170,38 +169,52 @@ EOREGEX
 			
 	}
 	#Capture changes from the source into the dest
-	public function capture_changes($setup_schema=true) {
+	public function capture_changes($iterations=1) {
 				
 		$this->initialize();
-
-		#retrieve the list of logs which have not been fully processed
-		#there won't be any logs if we just initialized the consumer above
-		$sql = "SELECT bcs.* 
-		          FROM `" . $this->mvlogDB . "`.`binlog_consumer_status` bcs 
-		         WHERE server_id=" . $this->serverId .  
-		       "   AND exec_master_log_pos < master_log_size 
-		         ORDER BY master_log_file;";
 		
-	
-		#echo " -- Finding binary logs to process\n";
-		$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
-		$processedLogs = 0;
-		while($row = mysql_fetch_assoc($stmt)) {
-			++$processedLogs;
+		$count=0;
+		$sleep_time=0;
+		while(1) {
+			$this->initialize();
+			#retrieve the list of logs which have not been fully processed
+			#there won't be any logs if we just initialized the consumer above
+			$sql = "SELECT bcs.* 
+			          FROM `" . $this->mvlogDB . "`.`binlog_consumer_status` bcs 
+			         WHERE server_id=" . $this->serverId .  
+			       "   AND exec_master_log_pos < master_log_size 
+			         ORDER BY master_log_file;";
+			
 		
-			if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;
-			$execCmdLine = sprintf("%s --base64-output=decode-rows -v -R --start-position=%d --stop-position=%d %s", $this->cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
-			#echo  "-- $execCmdLine\n";
-			$proc = popen($execCmdLine, "r");
-			$this->binlogPosition = $row['exec_master_log_pos'];
-			$this->logName = $row['master_log_file'];
-			$this->process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos']);
-			#make sure the end of the binary log is captured
-#			$this->set_capture_pos();
-
-			pclose($proc);
+			#echo " -- Finding binary logs to process\n";
+			$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
+			$processedLogs = 0;
+			while($row = mysql_fetch_assoc($stmt)) {
+				++$processedLogs;
+			
+				if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;
+				$execCmdLine = sprintf("%s --base64-output=decode-rows -v -R --start-position=%d --stop-position=%d %s", $this->cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
+				#echo  "-- $execCmdLine\n";
+				$proc = popen($execCmdLine, "r");
+				$this->binlogPosition = $row['exec_master_log_pos'];
+				$this->logName = $row['master_log_file'];
+				$this->process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos']);
+				$this->set_capture_pos();	
+				mysql_query('commit', $this->dest);
+				pclose($proc);
+			}
+			++$count;
+			if($iterations > 0 && $count >= $iterations) break;
+			if($processedLogs) $sleep_time=0;
+			if($iterations <= 0) {
+				#echo ".";
+				$sleep_time += 250000;
+				if($sleep_time > 1000000) $sleep_time = 1000000;
+				usleep($sleep_time);
+				
+			}
+			
 		}
-		
 		return $processedLogs;
 
 	}
@@ -215,9 +228,11 @@ EOREGEX
 		}
 	
 		$settings=@parse_ini_file($iniFile,true) or die("Could not read ini file: $iniFile\n");
-		if(!$settings || empty($settings->settings['flexcdc'])) {
+		if(!$settings || empty($settings['flexcdc'])) {
 			die("Could not find [flexcdc] section or .ini file not found");
 		}
+
+		return $settings;
 
 	}
 
@@ -236,7 +251,7 @@ EOREGEX
 	/* Set up the destination connection */
 	function initialize_dest() {
 		
-		
+		mysql_select_db($this->mvlogDB) or die('COULD NOT CHANGE DATABASE TO:' . $this->mvlogDB . "\n");
 		mysql_query("BEGIN;", $this->dest) or die(mysql_error());
 		mysql_query("CREATE TEMPORARY table log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
 		$stmt = mysql_query("SET SQL_LOG_BIN=0", $this->dest);
@@ -626,7 +641,7 @@ EOREGEX
 				$line = trim(fgets($proc));
 			}
 
-			#echo "-- $line\n";
+			echo "-- $line\n";
 			#It is faster to check substr of the line than to run regex
 			#on each line.
 			$prefix=substr($line, 0, 5);
