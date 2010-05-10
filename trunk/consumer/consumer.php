@@ -29,8 +29,8 @@ EOREGEX
   	
   	
 	private $mvlogDB = NULL;
-	private	$mvlogList = array();
-	
+	public	$mvlogList = array();
+	private $activeDB = NULL;
 	private $onlyDatabases = array();
 	private $cmdLine;
 
@@ -51,6 +51,7 @@ EOREGEX
 	public function get_dest() {
 		return $this->dest;
 	}
+
 	#Construct a new consumer object.
 	#By default read settings from the INI file unless they are passed
 	#into the constructor	
@@ -115,7 +116,9 @@ EOREGEX
 					 mvlogs (table_schema varchar(50), 
                              table_name varchar(50), 
                              mvlog_name varchar(50),
-                             active_flag boolean default true
+                             active_flag boolean default true,
+                             primary key(table_schema,table_name),
+                             unique key(mvlog_name)
                      ) ENGINE=INNODB DEFAULT CHARSET=utf8;"
 		            , $this->dest) or die('COULD NOT CREATE TABLE mvlogs: ' . mysql_error($this->dest) . "\n"); 
 
@@ -180,7 +183,7 @@ EOREGEX
 		         ORDER BY master_log_file;";
 		
 	
-		echo " -- Finding binary logs to process\n";
+		#echo " -- Finding binary logs to process\n";
 		$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 		$processedLogs = 0;
 		while($row = mysql_fetch_assoc($stmt)) {
@@ -188,7 +191,7 @@ EOREGEX
 		
 			if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;
 			$execCmdLine = sprintf("%s --base64-output=decode-rows -v -R --start-position=%d --stop-position=%d %s", $this->cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
-			echo  "-- $execCmdLine\n";
+			#echo  "-- $execCmdLine\n";
 			$proc = popen($execCmdLine, "r");
 			$this->binlogPosition = $row['exec_master_log_pos'];
 			$this->logName = $row['master_log_file'];
@@ -318,7 +321,7 @@ EOREGEX
 		//TODO: support BULK INSERT
 		$valList = "(-1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $this->row) . ")";
 		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
-		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
+		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 	}
 
 	/* Called when a row is inserted, or for the new image of an UPDATE */
@@ -327,7 +330,7 @@ EOREGEX
         //TODO: support BULK INSERT
 		$valList = "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $this->row) . ")";
 		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
-		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error());
+		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 	}
 	/* Called for statements in the binlog.  It is possible that this can be called more than
 	 * one time per event.  If there is a SET INSERT_ID, SET TIMESTAMP, etc
@@ -362,7 +365,10 @@ EOREGEX
 				
 			#ignore SET and USE for now.  I don't think we need it for anything.
 			case 'SET':
-			case 'USE':	
+				break;
+			case 'USE':
+				$this->activeDB = trim($args);	
+				$this->activeDB = str_replace($this->delimiter,'', $this->activeDB);
 				break;
 				
 			#NEW TRANSACTION
@@ -378,10 +384,10 @@ EOREGEX
 				$this->commit_transaction();
 				break;
 				
-			#Might be interestested in CREATE TABLE at some point, but not right now.
+			#Might be interestested in CREATE statements at some point, but not right now.
 			case 'CREATE':
 				break;
-
+				
 			#DML IS BAD....... :(
 			case 'INSERT':
 			case 'UPDATE':
@@ -392,6 +398,78 @@ EOREGEX
 				if($this->raiseWarnings) trigger_error('Detected statement DML on a table!  Changes can not be tracked!' , E_USER_WARNING);
 				break;
 
+			case 'RENAME':
+				
+				#TODO: Find some way to make atomic rename atomic.  split it up for now
+				$tokens = FlexCDC::split_sql($sql);
+				
+				$clauses=array();
+				$new_sql = '';
+				$clause = "";
+				for($i=4;$i<count($tokens);++$i) {
+					#grab each alteration clause (like add column, add key or drop column)
+					if($tokens[$i] == ',') {
+						$clauses[] = $clause;
+						$clause = "";
+					} else {
+						$clause .= $tokens[$i]; 
+					}		
+				}
+				if($clause) $clauses[] = $clause;
+				$new_clauses = "";
+				
+				foreach($clauses as $clause) {
+					
+					$clause = trim(str_replace($this->delimiter, '', $clause));
+					$tokens = FlexCDC::split_sql($clause);
+					$old_table = $tokens[0];
+					if(strpos($old_table, '.') === false) {
+						$old_base_table = $old_table;
+						$old_table = $this->activeDB . '.' . $old_table;
+						$old_schema = $this->activeDB;
+						
+					} else {
+						$s = explode(".", $old_table);
+						$old_schema = $s[0];
+						$old_base_table = $s[1];
+					}
+					$old_log_table = str_replace('.','_',$old_table);
+					
+					$new_table = $tokens[4];
+					if(strpos($new_table, '.') === false) {
+						$new_schema = $this->activeDB;
+						$new_base_table = $new_table;
+						$new_table = $this->activeDB . '.' . $new_table;
+						
+					} else {
+						$s = explode(".", $new_table);
+						$new_schema = $s[0];
+						$new_base_table = $s[1];
+					}
+					
+					$new_log_table = str_replace('.', '_', $new_table);
+										
+					$clause = "$old_log_table TO $new_log_table";
+							
+					
+					$sql = "DELETE from mvlogs where table_name='$old_base_table' and table_schema='$old_schema'";
+					
+					mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+					$sql = "INSERT INTO mvlogs (mvlog_name, table_name, table_schema) values ('$new_log_table', '$new_base_table', '$new_schema')";
+					mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+					
+					$sql = 'RENAME TABLE ' . $clause;
+					mysql_query($sql, $this->dest) or die('DURING RENAME:\n' . $new_sql . "\n" . mysql_error($this->dest) . "\n");
+					mysql_query('commit', $this->dest);					
+				
+					$this->mvlogList = array();
+					$this->refresh_mvlog_cache();
+					
+					
+				}
+						
+				
+				break;
 			#ALTER we can deal with via some clever regex, when I get to it.  Need a test case
 			#with some complex alters
 			case 'ALTER':
@@ -405,41 +483,97 @@ EOREGEX
 					}
 				}
 				preg_match('/\s+table\s+([^ ]+)/', $sql, $matches);
-				$new_clause = "";
+				
 				if(empty($this->mvlogList[str_replace('.','',trim($matches[1]))])) {
 					return;
 				}
-				$this->mvlog_table = $this->mvlogList[str_replace('.','',$matches[1])];
+				$table = $matches[1];
+				#switch table name to the log table
+				if(strpos($table, '.')) {
+				  $s = explode('.', $table);
+				  $old_schema = $s[0];
+				  $old_base_table = $s[1];
+				} else {
+				  $old_schema = $this->activeDB;
+				  $old_base_table = $table;
+				}
+				unset($table);
+				
+				$old_log_table = $s[0] . '_' . $s[1];
+				
+				#IGNORE ALTER TYPES OTHER THAN TABLE
 				if($is_alter_table>-1) {
 					$clauses = array();
 					$clause = "";
 
 					for($i=$is_alter_table+4;$i<count($tokens);++$i) {
-
 						#grab each alteration clause (like add column, add key or drop column)
 						if($tokens[$i] == ',') {
-							$clause = trim(str_replace($this->delimiter, '', $clause));
-							if(preg_match('/^ADD KEY|^ADD INDEX|^DROP KEY|^DROP INDEX|^ADD PRIMARY|^DROP PRIMARY/i', $clause)) {
-								$clause = "";
-								continue;
-							}
-							if($new_clause) $new_clause .= ', ';
-							$new_clause .= $clause;
+							$clauses[] = $clause;
 							$clause = "";
 						} else {
 							$clause .= $tokens[$i]; 
-						}
-						
+						}		
 					}	
-
-					$clause = trim(str_replace($this->delimiter, '', $clause));
-					if(!preg_match('/^ADD KEY|^ADD INDEX|^DROP KEY|^DROP INDEX|^ADD PRIMARY|^DROP PRIMARY/i', $clause)) {
-						if($new_clause) $new_clause .= ', ';
-						$new_clause .= $clause;
+					$clauses[] = $clause;
+					
+					
+					$new_clauses = "";
+					$new_log_table="";
+					$new_schema="";
+					$new_base_Table="";
+					foreach($clauses as $clause) {
+						$clause = trim(str_replace($this->delimiter, '', $clause));
+						
+						#skip clauses we do not want to apply to mvlogs
+						if(!preg_match('/^ORDER|^DISABLE|^ENABLE|^ADD CONSTRAINT|^ADD FOREIGN|^ADD FULLTEXT|^ADD SPATIAL|^DROP FOREIGN|^ADD KEY|^ADD INDEX|^DROP KEY|^DROP INDEX|^ADD PRIMARY|^DROP PRIMARY|^ADD PARTITION|^DROP PARTITION|^COALESCE|^REORGANIZE|^ANALYZE|^CHECK|^OPTIMIZE|^REBUILD|^REPAIR|^PARTITION|^REMOVE/i', $clause)) {
+							
+							#we have three "header" columns in the mvlog.  Make it so that columns added as
+							#the FIRST column on the table go after our header columns.
+							$tokens = preg_split('/\s/', $clause);
+														
+							if(strtoupper($tokens[0]) == 'RENAME') {
+								if(strtoupper(trim($tokens[1])) == 'TO') {
+									$tokens[1] = $tokens[2];
+								}
+								
+								if(strpos($tokens[1], '.') !== false) {
+									$new_log_table = $tokens[1];
+									$s = explode(".", $tokens[1]);
+									$new_schema = $s[0];
+									$new_base_table = $s[1];
+								} else {
+									$new_base_table = $tokens[1];
+									$new_log_table = $this->activeDB . '.' . $tokens[1];
+								}
+								$new_log_table = str_replace('.', '_', $new_log_table);
+								$clause = "RENAME TO $new_log_table";
+																			
+							}
+							
+							if(strtoupper($tokens[0]) == 'ADD' && strtoupper($tokens[count($tokens)-1]) == 'FIRST') {
+								$tokens[count($tokens)-1] = 'AFTER `fv$server_id`';
+								$clause = join(' ', $tokens);
+							}
+							if($new_clauses) $new_clauses .= ', ';
+							$new_clauses .= $clause;
+						}
 					}
-					$new_alter = 'ALTER TABLE ' . $this->mvlog_table . ' ' . $new_clause;
-					echo "RUNNING ALTER: $new_alter\n";
-					mysql_query($new_alter, $this->dest) or die($new_alter. "\n" . mysql_error($this->dest) . "\n");
+					if($new_clauses) {
+						$new_alter = 'ALTER TABLE ' . $old_log_table . ' ' . $new_clauses;
+						
+						mysql_query($new_alter, $this->dest) or die($new_alter. "\n" . mysql_error($this->dest) . "\n");
+						if($new_log_table) {
+							$sql = "DELETE from mvlogs where table_name='$old_base_table' and table_schema='$old_schema'";
+							mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+
+							$sql = "INSERT INTO mvlogs (mvlog_name, table_name, table_schema) values ('$new_log_table', '$new_base_table', '$new_schema')";
+							
+							mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+							$this->mvlogList = array();
+							$this->refresh_mvlog_cache();
+						}
+					}
 				}	
 											 
 				break;
@@ -476,7 +610,7 @@ EOREGEX
 		$sql = "";
 
 		$lastLine = "";
-
+		
 		#read from the mysqlbinlog process one line at a time.
 		#note the $lastLine variable - we process rowchange events
 		#in another procedure which also reads from $proc, and we
@@ -516,11 +650,11 @@ EOREGEX
 							if($this->db == $this->mvlogDB && $this->base_table == 'mvlogs') {
 								$this->refresh_mvlog_cache();
 							}
-		
+							
 							if(empty($this->mvlogList[$this->db . $this->base_table])) {
 								if($this->auto_changelog) {
-								 	$this->create_mvlog($this->db, $this->base_table);  
-								 	$this->refresh_mvlog_cache();
+								 		$this->create_mvlog($this->db, $this->base_table);  
+								 		$this->refresh_mvlog_cache();
 								}
 							}
 							$this->mvlog_table = $this->mvlogList[$this->db . $this->base_table];
@@ -665,7 +799,7 @@ EOREGEX
 			trigger_error('Could not access table:' . $v_table_name, E_USER_ERROR);
 		}
 			
-		$v_sql = FlexCDC::concat('CREATE TABLE `', $this->mvlogDB ,'`.`' ,$v_schema_name, '_', $v_table_name,'` ( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', $v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
+		$v_sql = FlexCDC::concat('CREATE TABLE IF NOT EXISTS`', $this->mvlogDB ,'`.`' ,$v_schema_name, '_', $v_table_name,'` ( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', $v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
 		$create_stmt = mysql_query($v_sql, $this->dest);
 		if(!$create_stmt) die('COULD NOT CREATE MVLOG. ' . $v_sql . "\n");
 		$exec_sql = " INSERT INTO mvlogs( table_schema , table_name , mvlog_name ) values('$v_schema_name', '$v_table_name', '" . $v_schema_name . "_" . $v_table_name . "')";
