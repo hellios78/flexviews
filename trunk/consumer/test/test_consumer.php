@@ -1,5 +1,5 @@
 <?php 
-require_once('../consumer.php');
+require_once('../flexcdc.php');
 /*
 $cdc = new FlexCDC(	parse_ini_file('./test_consumer.ini', true));
 $cdc->capture_changes();
