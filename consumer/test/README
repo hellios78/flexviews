@@ -12,7 +12,9 @@ To run the tests:
 
   See the MySQL sandbox cookbook: http://search.cpan.org/~gmax/MySQL-Sandbox-3.0.06/lib/MySQL/Sandbox/Recipes.pm
 
-1) sh create_sandbox.sh (or start an existing sandbox)
+1) sh create_sandbox.sh (or start an existing sandbox on port 54321, or modify the .ini file to point to a real MySQL server)
 2) php_unit test_file.php 
+
+THE TESTS DESTROY THE 'test' database!  Use on a running MySQL database at your peril!
 
 
