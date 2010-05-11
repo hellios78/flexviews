@@ -23,11 +23,21 @@ By default, FlexCDC reads a configuration file (consumer.ini) located in the wor
 There are three required .ini sections: [flexcdc], [source], [dest]
 Please see the example included file: consumer.ini.example which contains all of the settings.
 
+REQUIREMENTS:
+Your database must be logging changes in 'ROW' mode.  Make sure binlog_format=ROW is set in your my.cnf
+YOU MUST RESTART* YOUR DATABASE IF YOU CHANGE THIS SETTING
 
-Upgrading from Flexviews 1.5
+* I know the manual says you can change the format at runtime, but if the format is STATEMENT in the binary log
+  then it will not work.  Dynamically changing the format only works if binlog_format=MIXED or binlog_format=ROW 
+  IN THE CONFIG FILE FROM SERVER STARTUP
+
+DO NOT CHANGE THE MODE WHILE THE DATABASE IS RUNNING.  Always use ROW mode.  If you have MIXED in your config file then
+MySQL may choose to write DML statements as statements in the binary log.  THOSE CHANGES CAN NOT BE LOGGED BY THE TOOL!  FlexCDC will raise a warning if this situation is encountered.
+
+Upgrading from consumer.php from Flexviews 1.5
 -------------------------
 Stop the old binary log consumer script.
-Update the configuration file.  Be sure to set database= and to rename [flexviews] to [flexcdc]
+Update the new configuration file.  Be sure to set database= and to rename [flexviews] to [flexcdc] if you use your old file.
 DO NOT enable auto_changelog=true
 Please note: Flexviews 1.5.0 will not work with autochangelogging yet!  I will release Flexviews 1.5.1 shortly.
 FlexCDC 1.5.1 should work with any tables that you manually log with flexviews.create_mvlog() as long as autochangelog=false.
