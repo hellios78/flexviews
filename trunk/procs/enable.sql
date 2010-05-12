@@ -19,6 +19,34 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS enable;;
+/****f* flexviews/flexviews.enable
+ * NAME
+ *   flexviews.enable - Materialize a view which has not yet been materialized.  
+ *   Once a view is enabled its structure can not be altered unless it is disabled.
+ * SYNOPSIS
+ *   flexviews.enable(v_mview_id);
+ * FUNCTION
+ *   This function creates the table which will hold the rows for the materialized
+ *   view.  It then uses INSERT .. SELECT to populate the view and marks a record
+ *   in flexviews.mview_signal in order to get the exact uow_id for the transaction
+ *   which populates the table.  This value is stored in the Flexviews metadata
+ *   and is used the first time the view is refreshed.
+ *   
+ * INPUTS
+ *   v_mview_id - The materialized view id (see flexviews.get_id)
+ * RESULT
+ *   An error will be generated in the MySQL client if the view can not be enabled.
+ * SEE ALSO
+ *   flexviews.disable, flexviews.get_id
+ * EXAMPLE
+ *   call flexviews.enable(flexviews.get_id('test','mv_example'))
+ * NOTES
+ *   If the view can not be created for some reason, an error message will be displayed.
+ *   You can check the values of @MV_DEBUG and @v_sql which will contain the SELECT statement
+ *   and CREATE TABLE statement for the view, respectively.
+******
+*/
+
 
 CREATE DEFINER=flexviews@localhost PROCEDURE  `enable`(
   IN v_mview_id INT

@@ -19,6 +19,30 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS flexviews.disable;;
+/****f* flexviews/flexviews.disable
+ * NAME
+ *   flexviews.enable - Drop the table containing the materialized rows for the view.
+ *   The flexviews metadata will be updated to reflect the disabled status.
+ * SYNOPSIS
+ *   flexviews.disable(v_mview_id);
+ * FUNCTION
+ *   This function drops the table holding the rows for the materialized
+ *   view.  There is no warning and the table is dropped as soon as this command is issued.
+ *   Flexviews.mview.mview_status is updated to reflect that the view is disabled.
+ * INPUTS
+ *   v_mview_id - The materialized view id (see flexviews.get_id)
+ * RESULT
+ *   An error will be generated in the MySQL client if the view can not be disabled.
+ * SEE ALSO
+ *   flexviews.enable, flexviews.get_id
+ * EXAMPLE
+ *   call flexviews.disable(flexviews.get_id('test','mv_example'))
+ * NOTES
+ *   If the view can not be created for some reason, an error message will be displayed.
+ *   You can check the values of @MV_DEBUG and @v_sql which will contain the SELECT statement
+ *   and CREATE TABLE statement for the view, respectively.
+******
+*/
 
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`disable`(
   IN v_mview_id INT
