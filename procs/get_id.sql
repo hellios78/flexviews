@@ -21,7 +21,7 @@ DELIMITER ;;
 DROP FUNCTION IF EXISTS flexviews.get_id;;
 /****f* flexviews/flexviews.get_id
  * NAME
- *   flexviews.get_id - Materialize a view which has not yet been materialized.  
+ *   flexviews.get_id - Get the materialized view id for the given view in the given schema
  * SYNOPSIS
  *   flexviews.get_id(v_mview_schema, v_mview_name)
  * FUNCTION
