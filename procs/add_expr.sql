@@ -19,6 +19,55 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
+/****f* flexviews/flexviews.add_expr
+ * NAME
+ *   flexviews.add_expr - Add an expression or indexes to a materialized view.
+ * SYNOPSIS
+ *   flexviews.add_expr(v_mview_id, v_expr_type, v_expression, v_alias) 
+ * FUNCTION
+ *   This function adds an expression or indexes to the materialized view 
+ *   definition.  This function may only be called on disabled materialized views,
+ *   though in the future adding indexes will be possible on enabled views.
+ *   Each column referenced in the expression must be prefixed with a table
+ *   alias provided in flexviews.add_table.
+ * INPUTS
+ *   v_mview_id -- The materialized view id (see flexviews.get_id)
+ *   v_expr_type:
+ *   * GROUP -- GROUP BY this expression.  If any aggregate functions are used, then the non
+ *     aggregate expressions MUST be GROUP expressions.
+ *   * COLUMN -- Views with aggregation are more expensive to maintain.  If a view contains NO
+ *     aggregate expressions then you can use COLUMN expressions to avoid
+ *     GROUPing when it isn't required.
+ *   * COUNT -- When star '*' is provided as the expression, counts all rows.
+ *             When any other expression is used, counts NOT-NULL values of the expresion.
+ *   * SUM -- Use the SUM aggregate function
+ *   * MIN -- Experimental MIN support  (uses auxilliary view)
+ *   * MAX -- Experimental MAX support  (uses auxilliary view)
+ *   * AVG -- Experimental AVG support  (adds SUM and COUNT expressions automatically)
+ *   * COUNT_DISTINCT -- Experimental COUNT(DISTINCT) support (uses auxilliary view)
+ *   * PRIMARY -- Adds a primary key to the view.  Specify column aliases in v_expr.  
+ *   * KEY -- Adds an index to the view.  Specify column aliases in v_expr.
+ *
+ *   v_expr - The expression to add.  Any columns in the expression must be prefixed with
+ *   a table alias created with flexviews.add_table.  When the PRIMARY or KEY expression types
+ *   are used, the user must specify one more more COLUMN aliases (which may include the alias
+ *   currently being added) to index.  
+ *
+ *   v_alias - Every expression must be given a unique alias in the view, which becomes the
+ *   name of the column in the materialized view. For PRIMARY and KEY indexes, this will be
+ *   the name of the index in the view.  You must NOT use any reserved words in this name. 
+ * 
+ * SEE ALSO
+ *   flexviews.enable, flexviews.add_table, flexviews.disable
+ * EXAMPLE
+ *   set @mv_id = flexviews.get_id('test', 'mv_example');
+ *   call flexviews.add_table(@mv_id, 'schema', 'table', 'an_alias', NULL);
+ *
+ *   call flexviews.add_expr(@mv_id, 'GROUP', 'an_alias.c1', 'c1');
+ *   call flexviews.add_expr(@mv_id, 'SUM', 'an_alias.c2', 'sum_c2');
+ *   call flexviews.add_expr(@mv_id, 'PRIMARY', 'c1', 'pk');
+******
+*/
 
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`add_expr`(
   IN v_mview_id INT,

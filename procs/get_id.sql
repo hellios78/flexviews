@@ -19,6 +19,23 @@ DELIMITER ;;
 */
 
 DROP FUNCTION IF EXISTS flexviews.get_id;;
+/****f* flexviews/flexviews.get_id
+ * NAME
+ *   flexviews.get_id - Materialize a view which has not yet been materialized.  
+ * SYNOPSIS
+ *   flexviews.get_id(v_mview_schema, v_mview_name)
+ * FUNCTION
+ *   This function returns the materialied view id for the given materialized view.
+ * INPUTS
+ *   v_mview_schema - The schema which contains the materialized view
+ *   v_mview_name - The name of the table which contains the rows for the view
+ * RESULT
+ *   NULL will be returned if the view does not exist.
+ * EXAMPLE
+ *   set @mv_id := flexviews.get_id('test','mv_example');
+******
+*/
+
 
 CREATE DEFINER=flexviews@localhost FUNCTION flexviews.get_id (
   v_mview_schema TEXT,

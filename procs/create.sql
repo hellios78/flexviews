@@ -19,6 +19,25 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS flexviews.create;;
+/****f* flexviews/flexviews.create
+ * NAME
+ *   flexviews.create - Create a materialized view placeholder "skeleton" for the view
+ * SYNOPSIS
+ *   flexviews.create(v_schema, v_mview_name, v_refresh_type)
+ * FUNCTION
+ *   This function creates a placeholder or "skeleton" for a Flexviews materialized view.
+ *   The materialized view identifier is stored in LAST_INSERT_ID() and is also accessible
+ *   using flexviews.get_id()
+ * INPUTS
+ *   v_schema       - The schema (aka database) in which to create the view
+ *   v_mview_name   - The name of the materialzied view to create
+ *   v_refresh_type - ENUM('INCREMENTAL','COMPLETE')
+ * RESULT
+ *   An error will be generated in the MySQL client if the skeleton can not be created.
+ * EXAMPLE
+ *   call flexviews.create('test', 'mv_example', 'INCREMENTAL');
+******
+*/
 
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`create`(
   IN v_mview_schema TEXT,
