@@ -51,6 +51,7 @@ BEGIN
   DECLARE v_mview_type TINYINT(4) DEFAULT -1;
   DECLARE v_trig_extension CHAR(3);
   DECLARE v_sql TEXT;
+  DECLARE v_mvlog_name TEXT;
   DECLARE cur_columns CURSOR
   FOR SELECT COLUMN_NAME, 
              IF(COLUMN_TYPE='TIMESTAMP', 'DATETIME', COLUMN_TYPE) COLUMN_TYPE
@@ -62,8 +63,9 @@ BEGIN
   SQLSTATE '02000'
     SET v_done = TRUE;
 
+  SET v_mvlog_name := CONCAT(v_schema_name, '_', v_table_name);
   
-  SET v_sql = CONCAT('DROP TABLE IF EXISTS ', flexviews.get_setting('mvlog_db'), '.', v_table_name, '_mvlog;');
+  SET v_sql = CONCAT('DROP TABLE IF EXISTS ', flexviews.get_setting('mvlog_db'), '.', v_mvlog_name);
   SET @v_sql = v_sql;
   PREPARE drop_stmt from @v_sql;
   EXECUTE drop_stmt;
@@ -96,7 +98,7 @@ BEGIN
   IF TRIM(v_sql) = "" THEN
     CALL flexviews.signal('TABLE NOT EXISTS OR ACCESS DENIED');
   END IF; 
-  SET v_sql = CONCAT('CREATE TABLE ', flexviews.get_setting('mvlog_db'), '.', v_table_name, '_mvlog', 
+  SET v_sql = CONCAT('CREATE TABLE ', flexviews.get_setting('mvlog_db'), '.', v_mvlog_name, 
                  '( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
    
   SET @v_sql = v_sql;
@@ -104,7 +106,7 @@ BEGIN
   EXECUTE create_stmt;
   DEALLOCATE PREPARE create_stmt; 
 
-  INSERT INTO flexviews.mvlogs (table_schema, table_name, mvlog_name) values (v_schema_name, v_table_name, CONCAT(v_table_name, '_mvlog'));
+  INSERT INTO flexviews.mvlogs (table_schema, table_name, mvlog_name) values (v_schema_name, v_table_name, v_mvlog_name);
 
 END ;;
 

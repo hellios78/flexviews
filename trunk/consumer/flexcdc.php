@@ -119,7 +119,21 @@ EOREGEX
 		$this->cleanup_logs();
 		
 	}
-	public function setup() {
+	
+	public function table_exists($schema, $table) {
+		$sql = "select 1 from information_schema.tables where table_schema='%s' and table_name='%s'";
+		$schema = mysql_real_escape_string($schema);
+		$table  = mysql_real_escape_string($table, $this->dest);
+		$sql = sprintf($sql, $schema, $table);
+		$stmt = mysql_query($sql, $this->dest);
+		if(mysql_fetch_array($stmt) !== false) {
+			return true;
+		}
+		mysql_free_result($stmt);
+		return false;
+	}
+	
+	public function setup($force=false) {
 		$sql = "SELECT @@server_id";
 		$stmt = mysql_query($sql, $this->source);
 		$row = mysql_fetch_array($stmt);
@@ -128,10 +142,16 @@ EOREGEX
 			 mysql_query('CREATE DATABASE ' . $this->mvlogDB) or die('Could not CREATE DATABASE ' . $this->mvlogDB . "\n");
 			 mysql_select_db($this->mvlogDB,$this->dest);
 		}
+		if($this->table_exists($this->mvlogDB, 'mvlogs')) {
+			if(!$force) {
+				trigger_error('Table already exists:mvlogs  Setup aborted!' , E_USER_ERROR);
+				return false;
+			}
+			mysql_query('DROP TABLE `' . $this->mvlogDB . '`.`mvlogs`;') or die('COULD NOT DROP TABLE: mvlogs\n' . mysql_error() . "\n");
+		}
 		
 		mysql_query("CREATE TABLE 
-		             IF NOT EXISTS 
-					 mvlogs (table_schema varchar(50), 
+					 `mvlogs` (table_schema varchar(50), 
                              table_name varchar(50), 
                              mvlog_name varchar(50),
                              active_flag boolean default true,
@@ -140,17 +160,30 @@ EOREGEX
                      ) ENGINE=INNODB DEFAULT CHARSET=utf8;"
 		            , $this->dest) or die('COULD NOT CREATE TABLE mvlogs: ' . mysql_error($this->dest) . "\n"); 
 
-		mysql_query("CREATE TABLE IF NOT EXISTS `mview_uow` (
-					  `uow_id` BIGINT AUTO_INCREMENT,
-					  `commit_time` TIMESTAMP,
-					  PRIMARY KEY(`uow_id`),
-					  KEY `commit_time` (`commit_time`)
+		if(FlexCDC::table_exists($this->mvlogDB, 'mview_uow')) {
+			if(!$force) {
+				trigger_error('Table already exists:mview_uow  Setup aborted!' , E_USER_ERROR);
+				return false;
+			}
+			mysql_query('DROP TABLE `' . $this->mvlogDB . '`.`mview_uow`;') or die('COULD NOT DROP TABLE: mview_uow\n' . mysql_error() . "\n");
+		}		            
+		mysql_query("CREATE TABLE 
+		 			 `mview_uow` (
+					  	`uow_id` BIGINT AUTO_INCREMENT,
+					  	`commit_time` TIMESTAMP,
+					  	PRIMARY KEY(`uow_id`),
+					  	KEY `commit_time` (`commit_time`)
 					) ENGINE=InnoDB DEFAULT CHARSET=latin1;"
 			    , $this->dest) or die('COULD NOT CREATE TABLE mview_uow: ' . mysql_error($this->dest) . "\n");
 
-
+		if(FlexCDC::table_exists($this->mvlogDB, 'binlog_consumer_status')) {
+			if(!$force) {
+				trigger_error('Table already exists:binlog_consumer_status  Setup aborted!' , E_USER_ERROR);
+				return false;
+			}
+			mysql_query('DROP TABLE `' . $this->mvlogDB . '`.`binlog_consumer_status`;') or die('COULD NOT DROP TABLE: binlog_consumer_status\n' . mysql_error() . "\n");
+		}	
 		mysql_query("CREATE TABLE 
-		             IF NOT EXISTS
 					 `binlog_consumer_status` (
   					 	`server_id` int not null, 
   						`master_log_file` varchar(100) NOT NULL DEFAULT '',
@@ -185,10 +218,12 @@ EOREGEX
 		
 		mysql_query("commit;", $this->dest);
 		
+		return true;
+		
 			
 	}
 	#Capture changes from the source into the dest
-	public function capture_changes($iterations=1) {
+	public function capture_changes($iterations=1, $always_sleep_one_second=false) {
 				
 		$this->initialize();
 		
@@ -225,11 +260,15 @@ EOREGEX
 			++$count;
 			if($iterations > 0 && $count >= $iterations) break;
 			if($processedLogs) $sleep_time=0;
-			if($iterations <= 0) {
+			if($iterations < 0 || $iterations > 1) {
 				#echo ".";
 				$sleep_time += 250000;
 				if($sleep_time > 1000000) $sleep_time = 1000000;
-				usleep($sleep_time);
+				if($always_sleep_one_second) {
+					sleep(1);
+				} else {
+					usleep($sleep_time);	
+				}
 				
 			}
 			
@@ -269,7 +308,7 @@ EOREGEX
 	
 	/* Set up the destination connection */
 	function initialize_dest() {
-		
+		mysql_query("SELECT GET_LOCK('flexcdc::SOURCE_LOCK::" . $this->server_id . "',15)") or die("COULD NOT OBTAIN LOCK\n");
 		mysql_select_db($this->mvlogDB) or die('COULD NOT CHANGE DATABASE TO:' . $this->mvlogDB . "\n");
 		mysql_query("BEGIN;", $this->dest) or die(mysql_error());
 		mysql_query("CREATE TEMPORARY table log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
@@ -516,7 +555,7 @@ EOREGEX
 						break;
 					}
 				}
-				preg_match('/\s+table\s+([^ ]+)/', $sql, $matches);
+				preg_match('/\s+table\s+([^ ]+)/i', $sql, $matches);
 				
 				if(empty($this->mvlogList[str_replace('.','',trim($matches[1]))])) {
 					return;
@@ -660,7 +699,7 @@ EOREGEX
 				$line = trim(fgets($proc));
 			}
 
-			echo "-- $line\n";
+			#echo "-- $line\n";
 			#It is faster to check substr of the line than to run regex
 			#on each line.
 			$prefix=substr($line, 0, 5);
@@ -805,7 +844,7 @@ EOREGEX
 	
 		$cursor_sql = "SELECT COLUMN_NAME, IF(COLUMN_TYPE='TIMESTAMP', 'DATETIME', COLUMN_TYPE) COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='$v_table_name' AND TABLE_SCHEMA = '$v_schema_name'";
 	
-		$cur_columns = mysql_query($cursor_sql, $this->dest);
+		$cur_columns = mysql_query($cursor_sql, $this->source);
 		$v_sql = '';
 	
 		while(1) {

@@ -73,10 +73,7 @@ USE flexviews;
 \. ./procs/get_setting.sql
 \. ./procs/fvrand.sql
 
-CALL flexviews.uow_start(@uow_id);
-
 REPLACE into flexviews.mview_settings values ('mvlog_db', 'flexviews');
-REPLACE into flexviews.mview_settings values ('log_bin', '/home/justin.swanhart/local/var/');
 set @uow_id = NULL;
 
 -- Flexviews requires a signal table to communicate with the external binlog consumer

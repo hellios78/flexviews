@@ -55,6 +55,11 @@ CREATE DEFINER=`flexviews`@`localhost` PROCEDURE `flexviews`.`add_table`(
   IN v_mview_join_condition TEXT
 )
 BEGIN
+
+  IF v_mview_id IS NULL OR v_mview_id = 0 THEN
+    CALL flexviews.signal('INVALID_MVIEW_ID');
+  END IF;
+
   IF flexviews.is_enabled(v_mview_id) = 1 THEN
     CALL flexviews.signal('MAY_NOT_MODIFY_ENABLED_MVIEW');
   END IF;
@@ -83,7 +88,7 @@ BEGIN
    LIMIT 1;
 
   if @v_exists != true then
-    call flexviews.signal('NO CHANGELOG ON TABLE'); 
+    call flexviews.signal('NO_CHANGELOG_ON_TABLE'); 
   end if;
 
   INSERT INTO flexviews.mview_table

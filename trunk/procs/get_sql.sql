@@ -19,7 +19,23 @@ DELIMITER ;;
 */
 
 DROP FUNCTION IF EXISTS flexviews.get_sql;;
-
+/****f* flexviews/flexviews.get_sql
+ * NAME
+ *   flexviews.get_sql - Retrieve the SELECT statement which would represent the materialized view in a regular view
+ * SYNOPSIS
+ *   flexviews.get_sql(v_mview_id)
+ * FUNCTION
+ *   This function returns the SELECT statement which would be used by a normal view for the given expressions, tables
+ *   etc which have been created for the materialized view.
+ * INPUTS
+ *   v_mview_id - Id of the view
+ * RESULT
+ *   The SQL for the view.
+ * EXAMPLE
+ *   call flexviews.get_sql(1);
+ *   call flexviews.get_sql(flexviews.get_id('test','test_mv'));
+******
+*/
 CREATE DEFINER=flexviews@localhost FUNCTION flexviews.get_sql (
   v_mview_id INT
 )

@@ -19,7 +19,27 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS `rename`;;
-
+/****f* flexviews/flexviews.rename
+ * NAME
+ *   flexviews.rename - Rename a materialized views
+ * SYNOPSIS
+ *   flexviews.rename(v_mview_id, v_new_schema, v_new_table);
+ * FUNCTION
+ *   This function renames the given materialized view.
+ * INPUTS
+ *   v_mview_id - The materialized view id (see flexviews.get_id)
+ *   v_new_schema - The new schema, may be the same as the current schema 
+ *   v_new_table  - The new table, may be the same as the current table 
+ * RESULT
+ *   An error will be generated in the MySQL client if the view can not be enabled.
+ * SEE ALSO
+ *   flexviews.disable, flexviews.get_id, flexviews.enable, flexvies.create
+ * EXAMPLE
+ *   call flexviews.rename(flexviews.get_id('test','mv_example'), 'test', 'new_name_example')
+ *   call flexviews.rename(flexviews.get_id('test','mv_example'), 'new_schema_example', 'test')
+ *   call flexviews.rename(flexviews.get_id('test','mv_example'), 'new_schema', 'and_new_table')
+******
+*/
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE `rename`(
   IN v_mview_id INT,
   IN v_mview_schema_new TEXT,
