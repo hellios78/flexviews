@@ -557,6 +557,7 @@ DECLARE v_mview_join_condition TEXT;
 DECLARE v_from_clause TEXT default NULL;  
 DECLARE v_uow_id_start BIGINT;
 DECLARE v_uow_id_end BIGINT;
+DECLARE v_mvlog_name varchar(250);
 
 DECLARE cur_from CURSOR 
 FOR  
@@ -565,9 +566,12 @@ SELECT mview_table_name,
        mview_table_alias,
        mview_join_condition,
        uow_id_start, 
-       uow_id_end
+       uow_id_end,
+       mvlog_name
   FROM flexviews.mview_table t
   JOIN flexviews.table_list USING (mview_table_id)
+  JOIN flexviews.mvlogs logs on logs.table_name = mview_table_name
+                            and logs.table_schema = mview_table_schema
  WHERE depth = v_depth
  ORDER BY idx;
 
@@ -584,7 +588,8 @@ fromLoop: LOOP
         v_mview_table_alias,
         v_mview_join_condition,
         v_uow_id_start,
-        v_uow_id_end;
+        v_uow_id_end,
+        v_mvlog_name;
   
   IF v_done THEN      
     CLOSE cur_from;      
@@ -593,7 +598,9 @@ fromLoop: LOOP
 
   SET v_from_clause = CONCAT(v_from_clause, ' ',
                              IF(v_mview_join_condition IS NULL AND v_from_clause = '' , '', ' JOIN '), ' ',
-                             IF(v_uow_id_end IS NOT NULL, flexviews.get_setting('mvlog_db'), v_mview_table_schema),  '.', v_mview_table_name, IF(v_uow_id_end IS NOT NULL, '_mvlog', ''), ' as ',
+                             IF(v_uow_id_end IS NOT NULL, flexviews.get_setting('mvlog_db'), v_mview_table_schema), 
+                             '.', 
+                             IF(v_uow_id_end IS NOT NULL, v_mvlog_name, v_mview_table_name), ' as ',
                              v_mview_table_alias, ' ',
                              IFNULL(v_mview_join_condition, '') );
 END LOOP;

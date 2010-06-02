@@ -7,11 +7,20 @@ exit;
 */
 
 $settings = parse_ini_file('./test_consumer.ini', true);
+$settings['flexcdc']['database']='flexviews';
+
 class ConsumerTest extends PHPUnit_Framework_TestCase
 {   
-    public function testInstall() {
+    public function testInstaller() {
 		global $settings;
-    
+        $cdc = new FlexCDC($settings);
+        $this->assertTrue($cdc->get_source() && $cdc->get_dest());
+        $conn = $cdc->get_dest();
+        mysql_query('DROP DATABASE IF EXISTS flexviews') or die(mysql_error() . "\n");
+        mysql_query('DROP DATABASE IF EXISTS test') or die(mysql_error() . "\n");
+        $this->assertFalse(!mysql_query('RESET MASTER', $conn));
+        $cdc->setup();
+        
 		#keep moving up directories looking for the installer.  error out when we can move no further up
 		while(1) {
 			$this->assertTrue(chdir('..')); 
@@ -19,31 +28,43 @@ class ConsumerTest extends PHPUnit_Framework_TestCase
 			  break;
 		}
 		$output = `test/sandbox/use -uroot -pmsandbox < install.sql`;
+		$this->assertTrue(md5($output) == "b83cfd9e5fd29f1c458f8d4070c86511");
 		
-		echo $output;
-		exit;
+		$cdc->raiseWarnings = false;
 		
-        $cdc = new FlexCDC($settings);
-        $this->assertEquals('FlexCDC', get_class($cdc));
- 
-        $this->assertTrue($cdc->get_source() && $cdc->get_dest());
-        $cdc->raiseWarnings = false;
-        $conn = $cdc->get_source();
-        #RESET THE DB TO GET TO KNOWN GOOD STATE
-    	$this->assertTrue(mysql_query('DROP DATABASE IF EXISTS test', $conn));
-    	$this->assertFalse(!mysql_query('RESET MASTER', $conn));
-    	return $cdc;
+		$conn = $cdc->get_source();
+    	$sql = "CREATE DATABASE IF NOT EXISTS test";
+    	mysql_query($sql,$conn);
+    	$sql = "CREATE TABLE test.t1 (c1 int primary key)";
+    	mysql_query($sql, $conn);
+    	$sql = "INSERT INTO test.t1 values (1),(2),(3)";
+    	mysql_query($sql, $conn);
+    	$sql = "CREATE TABLE test.t2 (c1 int, c2 int, primary key(c2), key(c1))";
+    	mysql_query($sql, $conn);
+    	$sql = "INSERT INTO test.t2 values (1,1),(2,2),(3,3),(1,4)";
+    	mysql_query($sql, $conn);
+    	$cdc->capture_changes();
+    	#VERIFY THAT FLEXCDC IS WORKING - The consumer is going to run in the background 
+    	#for the rest of the test
+    	$sql = "select count(*) from flexviews.test_t1";
+    	$stmt = mysql_query($sql, $conn) or die(mysql_error() . "\n");
+        return $cdc;
         
     }
     
     /**
-     * @depends testConstructor
+     * @depends testInstaller
      */
-    public function testSetup($cdc) {
-    	$cdc->setup();
-    	$stmt = mysql_query('SELECT * FROM test.binlog_consumer_status', $cdc->get_dest());
-		$row  = mysql_fetch_assoc($stmt);
-	  	$this->assertTrue(!empty($row));
+    #This test tests the distributive aggregate functions COUNT, SUM and AVG
+    public function testIncrementalDistributive($cdc) {
+		$conn = $cdc->get_source();
+    	$sql = "CALL flexviews.create('test','test_mv','INCREMENTAL');";
+    	if(!mysql_query($sql)) {
+    		echo "COULD NOT CREATE MATERIALIZED VIEW HANDLE\n";
+    		echo "ERROR: " . mysql_error($conn) . "\n";
+    		exit;
+    	} 
+    	
     	return $cdc;
     }
  

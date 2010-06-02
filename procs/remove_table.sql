@@ -19,7 +19,29 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS flexviews.`remove_table` ;;
-
+/****f* flexviews/flexviews.remove_table
+ * NAME
+ *   flexviews.remove_table - Remove a table from a materialized view.
+ * SYNOPSIS
+ *   flexviews.remove_table(v_mview_id, 
+                         v_table_alias);
+ * FUNCTION
+ *   This function removes a table from a materialized view.  Any expressions
+ *   which reference this table must also be removed manually!
+ * INPUTS
+ *   v_mview_id     - The materialized view id (see flexviews.get_id)
+ *   v_table_alias  - The table alias you used when you added the table to the view.  
+ * RESULT
+ *   An error will be generated if the view is enabled.  No error is raised if the
+ *   given alias does not exist in the view.
+ * SEE ALSO
+ *   flexviews.disable, flexviews.get_id
+ * EXAMPLE
+ *   set @mv_id = flexviews.get_id('test', 'mv_example');
+ *   call flexviews.add_table(@mv_id, 'schema', 'table', 'an_alias', NULL);
+ *   call flexviews.remove_table(@mv_id, 'an_alias');
+******
+*/
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE `remove_table`(
   IN v_mview_id INT,
   IN v_mview_table_schema TEXT,
