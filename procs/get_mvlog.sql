@@ -19,7 +19,7 @@ DELIMITER ;;
 */
 
 DROP FUNCTION IF EXISTS flexviews.get_mvlog;;
-/****f* flexviews/flexviews.get_mvlog
+/****f* CDC_API/get_mvlog
  * NAME
  *   flexviews.get_mvlog - Get the materialized view log name for the given table in the given schema
  * SYNOPSIS
@@ -27,14 +27,15 @@ DROP FUNCTION IF EXISTS flexviews.get_mvlog;;
  * FUNCTION
  *   This function returns the materialied view log name for the table.
  * INPUTS
- *   v_table_schema - The schema which contains the materialized view
- *   v_table_name   - The name of the table which contains the rows for the view
+ *   * v_table_schema - The schema which contains the materialized view
+ *   * v_table_name   - The name of the table which contains the rows for the view
  * RESULT
- *   NULL will be returned if the table does not exist or is not logged
- *   EMPTY STRING is returned if logging on the table is disabled
- *   The name of the table will be returned otherwise
+ *   * NULL will be returned if the table does not exist or is not logged
+ *   * EMPTY STRING is returned if logging on the table is disabled
+ *   * The name of the table will be returned otherwise
  * EXAMPLE
- *   set @mv_id := flexviews.get_mvlog('test','mv_example');
+ *  mysql>
+ *    select flexviews.get_mvlog('test','mv_example');
 ******
 */
 

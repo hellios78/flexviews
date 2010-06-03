@@ -1,4 +1,4 @@
-    This file is part of FlexViews.
+    This file is part of FlexViews. (c) 2008-2010
 
     FlexViews is free software: you can redistribute it and/or modify
     it under the terms of the Lesser GNU General Public License as published by
@@ -15,37 +15,65 @@
     the GPL (the LGPL) in COPYING.LESSER.  
     If not, see <http://www.gnu.org/licenses/>.
 
-
-Welcome to Flexviews!
-
-Flexviews is a unique toolkit for the creation and upkeep of MATERIALIZED VIEWS for MySQL.
-
-Quick Overview
--------------------
-installation:
-Change to the directory containing the install.sql file
-Connect to MySQL as the 'root' user (or any user with SUPER privilege)
-source the install.sql file
-set the binary log consumer position with consumer/set_position.php
-run the consumer (there is a .sh file provided)
-you must leave the consumer running at all times!
-
-directories:
-consumer - this PHP program reads binary logs using mysqlbinlog and inserts entries into table change logs
-flexviews_demo - contains demo data and example materialized views
-lua - contains an experimental LUA version of the consumer which requires the 'replication' branch of MySQL proxy
-php - contains ancilliary scripts like from_sql.php which takes a formatted file of SQL statements and produces flexviews stored procedure calls
-procs - contains the source to the stored procedures.  usually invoked by install.sql
-schema - contains the CREATE DATABASE and CREATE TABLE statements for the flexviews schema.  usually invoked by install.sql
-
-What is Flexviews
-My first experience with materialized views was with Oracle 8i.  When my career went in a MySQL direction, the thing I missed most from Oracle was view materialization.  I realised after a few years that my vision of materialized views would likely never make its way into the core MySQL server any time in the near future.
-
-Flexviews supports SELECT-PROJECT-JOIN queries leveraging the algorithm described in 'How to roll a join': http://portal.acm.org/citation.cfm?id=335393 (2000)
-Flexviews extends this algorithm to distributive aggregate functions with 'summary delta tables' as descbribed in: http://portal.acm.org/citation.cfm?id=253260.253277 (1997)
-Flexviews combines both ideas to support non-distributable aggregate functions such as MIN/MAX/COUNT(DISTINCT) by trading space-for-time using a secondary summary table, though this could be handled better with transparent query rewrite.
-
-Many thanks to the authors of those papers.
-
-Justin Swanhart
-
+/****** 1/README
+ * NAME
+ * |html <pre>
+ * Welcome to Flexviews!
+ * 
+ *  SYNOPSIS
+ * 
+ * Flexviews is a unique toolkit for the creation and upkeep of MATERIALIZED VIEWS for MySQL.  You may freely use this project in your own projects.
+ * Simply keep the above copyright notice intact.
+ * 
+ * A NOTE ABOUT DATABASES
+ * Flexviews must be installed into the `flexviews` schema.  FlexCDC must be configured to use the `flexviews` schema as well.
+ * This is because the stored procedures must know where to find the Flexviews metadata, and an absolute reference to schema.table is
+ * the only safe way to avoid conflicts between the current default schema and the Flexviews schema.  This is a shortcoming of MySQL
+ * stored procedures.  Some day in the future, there will be a 'make' step that allows a global search/replace to switch the name
+ * `flexviews` to another name, but for now, you MUST install the tables and stored procedures in the `flexviews` schema.
+ *
+ * A NOTE ABOUT UPGRADES
+ * There is no upgrade script currently.  Please check future releases for more information about upgrading to that release.
+ * If you are using an older version of Flexviews, consider disabling all views, dropping the `flexviews` schema, and then 
+ * installing from scratch.  
+ *
+ * MAJOR CHANGES IN THIS RELEASE
+ * * FlexCDC is completely rewritten as a PHP class and includes unit tests
+ * * New documentation built from RoboDOC comments embedded in the SQL stored procedures
+ * * Support for auto-changelog mode in FlexCDC, so table change logs do not have to be created manually with flexviews.create_mvlog. Note that you can elect not to use auto-changelog mode and instead manually register table changelogs with flexviews.create_mvlog(schema,table)
+ * * New Flexviews website with an online tool to convert SQL statements into Flexviews SQL_API calls.
+ *
+ * COMING SOON
+ * * Flexviews test suite!
+ * * Autocleanup of changelog records which are no longer needed.  The old mvlog_autocleanup script has not worked since the introduction of the external consumer.
+ * * Examples!
+ *
+ * Quick Overview
+ * -------------------
+ * installation:
+ * Change to the directory containing the install.sql file
+ * Connect to MySQL as the 'root' user (or any user with SUPER privilege)
+ * source the install.sql file
+ * set up FlexCDC (see the instructions in the consumer/ subdirectory)
+ * run the consumer (there is a .sh file provided)
+ * you must leave the consumer running at all times!
+ * 
+ * directories:
+ *   * consumer - This directory contains FlexCDC which reads binary logs using mysqlbinlog and inserts entries into table change logs
+ *   * procs - contains the source to the stored procedures.  usually invoked by install.sql - If you want to modify Flexviews this is probably the place to start.
+ *   * php - contains misc scripts of no particular use to a wide audience, but that I want to keep under source control
+ *   * schema - contains the CREATE DATABASE and CREATE TABLE statements for the flexviews schema.  usually invoked by install.sql
+ * 
+ * What is Flexviews
+ * My first experience with materialized views was with Oracle 8i.  When my career went in a MySQL direction, the thing I missed most from Oracle was view materialization.  I realised after a few years that my vision of materialized views would likely never make its way into the core MySQL server any time in the near future.
+ * 
+ * Flexviews supports SELECT-PROJECT-JOIN queries leveraging the algorithm described in 'How to roll a join': http://pages.cs.wisc.edu/~beyer/papers/matview_sigmod00.pdf (2000)
+ * Flexviews extends this algorithm to distributive aggregate functions with 'summary delta tables'
+ * Flexviews supports non-distributable aggregate functions such as MIN/MAX/COUNT(DISTINCT) by trading space-for-time using a secondary summary table, though this could be handled better with transparent query rewrite.
+ * 
+ * Many thanks to the authors of those papers.
+ * 
+ * Justin Swanhart
+ *  |html </pre>
+******
+*/

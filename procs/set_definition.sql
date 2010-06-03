@@ -19,7 +19,7 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS `set_definition`;;
-/****f* flexviews/flexviews.set_definition
+/****f* SQL_API/set_definition
  * NAME
  *   flexviews.set_definition - sets the SQL SELECT statement to be used by the
  *   CREATE TABLE AS ... SELECT statement which is used for COMPLETE refresh
@@ -36,9 +36,11 @@ DROP PROCEDURE IF EXISTS `set_definition`;;
  * RESULT
  *   If the UPDATE does not succeed then the error will passed to the MySQL client
  * SEE ALSO
- *   flexviews.disable, flexviews.get_id, flexviews.enable
+ *   SQL_API/disable, UTIL_API/flexviews.get_id, SQL_API/flexviews.enable
  * EXAMPLE
- *   call flexviews.set_definition(flexviews.get_id('test','mv_example'), 'SELECT * from my_table where c1=1')******
+ *   mysql>
+ *     call flexviews.set_definition(flexviews.get_id('test','mv_example'), 'SELECT * from my_table where c1=1')
+******
 */
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE `set_definition`(
   IN v_mview_id INT,

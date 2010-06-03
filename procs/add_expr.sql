@@ -19,7 +19,7 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
-/****f* flexviews/flexviews.add_expr
+/****f* SQL_API/add_expr
  * NAME
  *   flexviews.add_expr - Add an expression or indexes to a materialized view.
  * SYNOPSIS
@@ -28,44 +28,44 @@ DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
  *   This function adds an expression or indexes to the materialized view 
  *   definition.  This function may only be called on disabled materialized views,
  *   though in the future adding indexes will be possible on enabled views.
- *   Each column referenced in the expression must be prefixed with a table
- *   alias provided in flexviews.add_table.
+ *   This adds the specified expression to the materialized view. If using aggregate functions, non-aggregated columns in the SELECT clause are GROUP expressions, otherwise, SELECT expressions are COLUMN expressions. Column references within an expression (regardless of type) must be fully qualified with the TABLE_ALIAS specified in flexviews.ADD_TABLE(). WHERE expressions are added to the WHERE clause of the view. The PRIMARY and KEY expressions represent keys on the materialized view table. Note that PRIMARY and KEY expressions do not reference base table columns, but instead you must specify one or more EXPR_ALIAS(es) previously defined.
  * INPUTS
- *   v_mview_id -- The materialized view id (see flexviews.get_id)
- *   v_expr_type:
- *   * GROUP -- GROUP BY this expression.  If any aggregate functions are used, then the non
- *     aggregate expressions MUST be GROUP expressions.
- *   * COLUMN -- Views with aggregation are more expensive to maintain.  If a view contains NO
- *     aggregate expressions then you can use COLUMN expressions to avoid
- *     GROUPing when it isn't required.
- *   * COUNT -- When star '*' is provided as the expression, counts all rows.
- *             When any other expression is used, counts NOT-NULL values of the expresion.
- *   * SUM -- Use the SUM aggregate function
- *   * MIN -- Experimental MIN support  (uses auxilliary view)
- *   * MAX -- Experimental MAX support  (uses auxilliary view)
- *   * AVG -- Experimental AVG support  (adds SUM and COUNT expressions automatically)
- *   * COUNT_DISTINCT -- Experimental COUNT(DISTINCT) support (uses auxilliary view)
- *   * PRIMARY -- Adds a primary key to the view.  Specify column aliases in v_expr.  
- *   * KEY -- Adds an index to the view.  Specify column aliases in v_expr.
+ *   * v_mview_id -- The materialized view id (see flexviews.get_id)
+ *   * v_expr_type -- GROUP|COLUMN|SUM|COUNT|MIN|MAX|AVG|COUNT_DISTINCT|PRIMARY|KEY
+ *   * v_expr -- The expression to add.  
+ *      Any columns in the expression must be prefixed with a table alias created with flexviews.add_table.  
+ *      When the PRIMARY or KEY expression types are used, the user must specify one more more aliases to
+ *      index.  These are normally aliases to GROUP expressions.
+ *   * v_alias -- Every expression must be given a unique alias in the view, which becomes the
+ *      name of the column in the materialized view. For PRIMARY and KEY indexes, this will be
+ *      the name of the index in the view.  You must NOT use any reserved words in this name. 
  *
- *   v_expr - The expression to add.  Any columns in the expression must be prefixed with
- *   a table alias created with flexviews.add_table.  When the PRIMARY or KEY expression types
- *   are used, the user must specify one more more COLUMN aliases (which may include the alias
- *   currently being added) to index.  
- *
- *   v_alias - Every expression must be given a unique alias in the view, which becomes the
- *   name of the column in the materialized view. For PRIMARY and KEY indexes, this will be
- *   the name of the index in the view.  You must NOT use any reserved words in this name. 
- * 
+ *  NOTES
+ *  Possible values of v_expr_type (a string value):
+ *   |html <table border=1 align=center><tr><th bgcolor=#cccccc >EXPR_TYPE</th><th bgcolor=#cccccc>Explanation</th></tr>
+ *   |html <tr><td>GROUP</td><td>GROUP BY this expression.
+ *   |html <tr><td>COLUMN</td><td>Simply project this expression.  Only works for views without aggregation.    
+ *   |html </tr><tr><td>COUNT<td>Count rows or expressions
+ *   |html </tr><tr><td>SUM<td>SUM adds the value of each expression.  SUM(distinct) is not yet supported.
+ *   |html </tr><tr><td>MIN<td>Experimental MIN support  (uses auxilliary view)
+ *   |html </tr><tr><td>MAX<td>Experimental MAX support  (uses auxilliary view)
+ *   |html </tr><tr><td>AVG<td>Experimental AVG support  (adds SUM and COUNT expressions automatically)
+ *   |html </tr><tr><td>COUNT_DISTINCT<td>Experimental COUNT(DISTINCT) support (uses auxilliary view)
+ *   |html </tr><tr><td>PRIMARY<td>Adds a primary key to the view.  Specify column aliases in v_expr.  
+ *   |html </tr><tr><td>KEY<td>Adds an index to the view.  Specify column aliases in v_expr.
+ *   |html </tr></table>
+ *   
+ 
  * SEE ALSO
  *   flexviews.enable, flexviews.add_table, flexviews.disable
  * EXAMPLE
- *   set @mv_id = flexviews.get_id('test', 'mv_example');
- *   call flexviews.add_table(@mv_id, 'schema', 'table', 'an_alias', NULL);
+ *   mysql>
+ *     set @mv_id = flexviews.get_id('test', 'mv_example');
+ *     call flexviews.add_table(@mv_id, 'schema', 'table', 'an_alias', NULL);
  *
- *   call flexviews.add_expr(@mv_id, 'GROUP', 'an_alias.c1', 'c1');
- *   call flexviews.add_expr(@mv_id, 'SUM', 'an_alias.c2', 'sum_c2');
- *   call flexviews.add_expr(@mv_id, 'PRIMARY', 'c1', 'pk');
+ *     call flexviews.add_expr(@mv_id, 'GROUP', 'an_alias.c1', 'c1');
+ *     call flexviews.add_expr(@mv_id, 'SUM', 'an_alias.c2', 'sum_c2');
+ *     call flexviews.add_expr(@mv_id, 'PRIMARY', 'c1', 'pk');
 ******
 */
 
