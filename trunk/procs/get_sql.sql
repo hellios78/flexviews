@@ -19,7 +19,7 @@ DELIMITER ;;
 */
 
 DROP FUNCTION IF EXISTS flexviews.get_sql;;
-/****f* flexviews/flexviews.get_sql
+/****f* UTIL_API/get_sql
  * NAME
  *   flexviews.get_sql - Retrieve the SELECT statement which would represent the materialized view in a regular view
  * SYNOPSIS
@@ -32,8 +32,9 @@ DROP FUNCTION IF EXISTS flexviews.get_sql;;
  * RESULT
  *   The SQL for the view.
  * EXAMPLE
- *   call flexviews.get_sql(1);
- *   call flexviews.get_sql(flexviews.get_id('test','test_mv'));
+ *   mysql>
+ *     call flexviews.get_sql(1);
+ *     call flexviews.get_sql(flexviews.get_id('test','test_mv'));
 ******
 */
 CREATE DEFINER=flexviews@localhost FUNCTION flexviews.get_sql (

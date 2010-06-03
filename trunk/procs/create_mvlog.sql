@@ -19,23 +19,31 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS flexviews.`create_mvlog` ;;
-/****f* Changelogs/flexviews.create_mvlog
+/****f* CDC_API/create_mvlog
  * NAME
- *   flexviews.create_mvlog - Create a table changelog on a table
+ *   flexviews.create_mvlog - Create a table changelog for a MySQL table
  * SYNOPSIS
  *   flexviews.create_mvlog(v_schema, v_mview_name)
  * FUNCTION
  *   This function creates a table change log (aka materialized view log)
  *   on a particular table in the database. Any data changes made to the table
- *   will be recorded in the table change log by the Flexviews binary log consumer.
+ *   will be recorded in the table change log by the Flexviews binary log consumer (FlexCDC).
+ *
+ *   You do not need to use this function if you use the auto-changelog mode of FlexCDC.
+ *   When this mode is used, change logs are made automatically when a change for a table is 
+ *   detected and the log has not yet been created.
+ *
+ *   If you use temporary tables, or you have only a small number of tables to log, then you might
+ *   consider not using auto-changelogging and instead only log certain tables.  Use this function
+ *   to add a table to the list of tables to log.  Once added a table may not be removed.
  * INPUTS
- *   v_schema       - The schema (aka database) in which the table resides
- *   v_table_name   - The name of the table you want to log changes on
+ *   * v_schema       - The schema (aka database) in which the table resides
+ *   * v_table_name   - The name of the table you want to log changes on
  * RESULT
- *   An error will be generated in the MySQL client if the changelog could not 
- *   be created.
+ *   An error will be generated in the MySQL client if the changelog could not be created.
  * EXAMPLE
- *   call flexviews.create_mvlog('test', 'my_table');
+ *     mysql>
+ *       call flexviews.create_mvlog('test', 'my_table');
 ******
 */
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE flexviews.`create_mvlog`(

@@ -19,7 +19,7 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS flexviews.refresh ;;
-/****f* flexviews/flexviews.refresh
+/****f* UTIL_API/refresh
  * NAME
  *   flexviews.refresh - Applies changes made to the database since the materialized view was created.
  * SYNOPSIS
@@ -30,25 +30,28 @@ DROP PROCEDURE IF EXISTS flexviews.refresh ;;
  *   This function initiates the refresh process for the given view.  The process varies depending on
  *   the type of view.  
  * INPUTS
- *   v_mview_id - The materialized view identifier
- *   v_mode     - The refresh mode
- *              - COMPUTE, APPLY, COMPLETE, BOTH
- *              - COMPLETE is used only for COMPLETE refresh materialized view.  The view is refreshed 
- *                from scratch using a combination of CREATE TABLE, INSERT INTO and RENAME TABLE
- *		- COMPUTE is used for INCREMENTAL tables.  It computes the changes since the last refresh
- *		  but it does not apply them.  Low cost frequent computations can be made while maintaining the 
- *		  transactional consistency of the view at the last refresh point in time.
- *              - APPLY is used to apply any un-applied changes from previous COMPUTE runs
- *              - BOTH: executes a COMPUTE followed by an APPLY
- *   v_uow_id   - (MAY BE NULL)
+ *   This function takes a combination of input parameters:
+ *   * v_mview_id - The materialized view identifier
+ *   * v_mode     - COMPLETE|COMPUTE|APPLY|BOTH
+ *   * v_uow_id   - (MAY BE NULL)
  *		  When a uow_id (transaction id) is provided the mode selected above will operate only on records
  *		  created at or before the given uow_id.  If a NULL value is provided, then the most recent committed 
  *		  transaction id will be used.
+ * NOTES
+ * v_mode:
+ * |html <table border=1 align="center">
+ * |html <tr><th bgcolor=#cccccc>v_mode<th bgcolor=#cccccc>explanation</th></tr><tr>             
+ * |html </tr><tr><td>COMPLETE</td><td>COMPLETE is used only for COMPLETE refresh materialized view.  The view is refreshed from scratch using a combination of CREATE TABLE, INSERT INTO and RENAME TABLE
+ * |html </tr><tr><td>COMPUTE</td><td>COMPUTE is used for INCREMENTAL tables.  It computes the changes since the last refresh but it does not apply them.  Low cost frequent computations can be made while maintaining the transactional consistency of the view at the last refresh point in time.
+ * |html </tr><tr><td>APPLY</td><td>APPLY is used to apply any un-applied changes from previous COMPUTE runs
+ * |html </tr><tr><td>BOTH</td><td>BOTH executes a COMPUTE followed by an APPLY
+ * |html </tr></table>
  * SEE ALSO
  *   flexviews.enable, flexviews.add_table, flexviews.add_expr
  * EXAMPLE
- *   set @mv_id = flexviews.get_id('test', 'mv_example');
- *   call flexviews.refresh(@mv_id, 'BOTH', NULL);
+ *   mysql>
+ *     set @mv_id = flexviews.get_id('test', 'mv_example');
+ *     call flexviews.refresh(@mv_id, 'BOTH', NULL);
 
  * NOTES
  *   The external binary log consumer MUST BE RUNNING in order to COMPUTE changes to views!

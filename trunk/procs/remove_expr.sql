@@ -19,26 +19,28 @@ DELIMITER ;;
 */
 
 DROP PROCEDURE IF EXISTS flexviews.`remove_expr`;;
-/****f* flexviews/flexviews.remove_expr
+/****f* SQL_API/remove_expr
  * NAME
  *   flexviews.remove_expr - Remove an expression or indexes from a materialized view.
  * SYNOPSIS
  *   flexviews.remove_expr(v_mview_id, v_alias) 
+ *
  * FUNCTION
  *   This function removes the expression with the given alias from the materialized view.
  * INPUTS
- *   v_alias - The alias that was specified for the expression when you added it to the view
- * 
+ *   * v_mview_id - The materialized view id
+ *   * v_alias - The alias that was specified for the expression when you added it to the view
+ * NOTES
+ *   * You can not modify an enabled view.
+ *   * This function is most often used to correct a mistake or typo made when creating the view.
  * SEE ALSO
  *   flexviews.enable, flexviews.add_table, flexviews.add_expr
  * EXAMPLE
- *   set @mv_id = flexviews.get_id('test', 'mv_example');
- *   call flexviews.add_table(@mv_id, 'schema', 'table', 'an_alias', NULL);
- *   call flexviews.add_expr(@mv_id, 'PRIMARY', 'c1*oops*', 'pk'); # ADD AN EXPRESSION WITH A PROBLEM
- *   call flexviews.remove_expr(@mv_id, 'pk'); # REMOVE THE EXPRESSION
- * NOTES
- *   You can not modify an enabled view.
- *   This function is most often used to correct a mistake or typo made when creating the view.
+ *   mysql>
+ *     set @mv_id = flexviews.get_id('test', 'mv_example');
+ *     call flexviews.add_table(@mv_id, 'schema', 'table', 'an_alias', NULL);
+ *     call flexviews.add_expr(@mv_id, 'PRIMARY', 'c1*oops*', 'pk'); # ADD AN EXPRESSION WITH A PROBLEM
+ *     call flexviews.remove_expr(@mv_id, 'pk'); # REMOVE THE EXPRESSION
 ******
 */
 

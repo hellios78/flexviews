@@ -19,7 +19,7 @@ DELIMITER ;;
 */
 
 DROP FUNCTION IF EXISTS flexviews.get_id;;
-/****f* flexviews/flexviews.get_id
+/****f* UTIL_API/get_id
  * NAME
  *   flexviews.get_id - Get the materialized view id for the given view in the given schema
  * SYNOPSIS
@@ -27,12 +27,13 @@ DROP FUNCTION IF EXISTS flexviews.get_id;;
  * FUNCTION
  *   This function returns the materialied view id for the given materialized view.
  * INPUTS
- *   v_mview_schema - The schema which contains the materialized view
- *   v_mview_name - The name of the table which contains the rows for the view
+ *   * v_mview_schema - The schema which contains the materialized view
+ *   * v_mview_name - The name of the table which contains the rows for the view
  * RESULT
  *   NULL will be returned if the view does not exist.
  * EXAMPLE
- *   set @mv_id := flexviews.get_id('test','mv_example');
+ *  mysql> 
+ *    set @mv_id := flexviews.get_id('test','mv_example');
 ******
 */
 

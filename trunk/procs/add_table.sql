@@ -19,32 +19,34 @@ DELIMITER ;;
 */
 DROP PROCEDURE IF EXISTS flexviews.`add_table` ;;
 
-/****f* flexviews/flexviews.add_table
+/****f* SQL_API/add_table
  * NAME
  *   flexviews.add_table - Add a table to the FROM clause of the materialized view.
  * SYNOPSIS
- *   flexviews.add_table(v_mview_id, v_table_schema, v_table_name,
-                         v_table_alias, v_join_clause);
+ *   flexviews.add_table(v_mview_id, v_table_schema, v_table_name, v_table_alias, v_join_clause);
  * FUNCTION
- *   This function adds a table to the FROM clause of the materialized view.  For
- *   views with a single table, or for the first table on a view with joins, the
- *   last paramter of the function will be NULL, otherwise the last parameter must
- *   be an ON or USING clause.  The table alias given for the table must be prefixed
- *   to any expressions which reference columns in this table.
+ * This function adds a table to the FROM clause of the materialized view.  
  * INPUTS
- *   v_mview_id     - The materialized view id (see flexviews.get_id)
- *   v_table_schema - The schema which contains the table to add
- *   v_table_name   - The name of the table to add
- *   v_table_alias  - The table alias to use in the view.  All tables MUST have an alias.
- *   v_join_clause  - Every table after the first must have a NOT-NULL join clause
+ *   * v_mview_id     - The materialized view id (see flexviews.get_id)
+ *   * v_table_schema - The schema which contains the table to add
+ *   * v_table_name   - The name of the table to add
+ *   * v_table_alias  - The table alias to use in the view.  All tables MUST have an alias.
+ *   * v_join_clause  - Every table after the first must have a NOT-NULL join clause
+ * NOTES
+ *   * For views with a single table, or for the first table on a view with joins, the last paramter of the function will be NULL.
+ *   * Additional tables MUST provide a valid ON or USING clause.  CROSS JOIN/cartesian products ARE NOT SUPPORTED.  
+ *   * All expressions used in an ON clause must be prefixed with a valid table alias!  
  * RESULT
- *   An error will be generated in the MySQL client if the view can not be enabled.
+ * An error will be generated in the MySQL client if:
+ * * The table does not exist
+ * * There is no materialized view log on the table 
  * SEE ALSO
  *   flexviews.disable, flexviews.get_id
  * EXAMPLE
- *   set @mv_id = flexviews.get_id('test', 'mv_example');
- *   call flexviews.add_table(@mv_id, 'schema', 'table', 'an_alias', NULL);
- *   call flexviews.add_table(@mv_id, 'schema', 'table2', 'a2', 'ON an_alias.c1 = a2.c1');
+ *    mysql>
+ *     set @mv_id = flexviews.get_id('test', 'mv_example');
+ *     call flexviews.add_table(@mv_id, 'schema', 'table', 'an_alias', NULL);
+ *     call flexviews.add_table(@mv_id, 'schema', 'table2', 'a2', 'ON an_alias.c1 = a2.c1');
 ******
 */
 CREATE DEFINER=`flexviews`@`localhost` PROCEDURE `flexviews`.`add_table`(
