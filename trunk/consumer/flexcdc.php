@@ -405,7 +405,12 @@ EOREGEX
 	function insert_row() {
 
         //TODO: support BULK INSERT
-		$valList = "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $this->row) . ")";
+		$row=array();
+		foreach($this->row as $col) {
+			if($col[0] != "'") $col = "'$col'";
+			$row[] = $col;
+		}
+		$valList = "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
 		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
 		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 	}
@@ -729,7 +734,7 @@ EOREGEX
 							}
 							
 							if(empty($this->mvlogList[$this->db . $this->base_table])) {
-								if($this->auto_changelog) {
+								if($this->auto_changelog && !strstr($this->base_table,'_delta') ) {
 								 		$this->create_mvlog($this->db, $this->base_table);  
 								 		$this->refresh_mvlog_cache();
 								}
