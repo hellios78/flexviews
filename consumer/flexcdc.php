@@ -59,7 +59,7 @@ EOREGEX
 	
 	private $binlogServerId;
 	
-	public  $raiseWarnings = true;
+	public  $raiseWarnings = false;
 	
 	public  $delimiter = ';';
 	public function get_source() {
@@ -106,6 +106,10 @@ EOREGEX
 		#shortcuts
 		$S = $settings['source'];
 		$D = $settings['dest'];
+
+		if(!empty($settings['raise_warnings']) && $settings['raise_warnings'] != 'false') {
+ 			$this->raiseWarnings=true;
+		}
 	
 		/*TODO: support unix domain sockets */
 		$this->source = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password'], true) or die('Could not connect to MySQL server:' . mysql_error());
@@ -282,7 +286,7 @@ EOREGEX
 		if(!empty($argv[1])) {
 			$iniFile = $argv[1];
 		} else {
-			$iniFile = "./consumer.ini";
+			$iniFile = "consumer.ini";
 		}
 	
 		$settings=@parse_ini_file($iniFile,true) or die("Could not read ini file: $iniFile\n");
