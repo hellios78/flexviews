@@ -108,7 +108,7 @@ BEGIN
 
       SELECT uow_id
         INTO v_uow_id
-        FROM flexviews.mview_signal_mvlog
+        FROM flexviews.flexviews_mview_signal
        WHERE signal_id = v_signal_id;
 
       IF (v_uow_id IS NOT NULL) THEN
