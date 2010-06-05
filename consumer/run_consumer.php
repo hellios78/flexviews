@@ -1,6 +1,6 @@
 <?php
 
-require_once('consumer.php');
+require_once('flexcdc.php');
 $cdc = new FlexCDC();
 #TODO: daemonize on unix
 #capture changes forever (-1):
