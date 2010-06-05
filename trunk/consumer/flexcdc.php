@@ -395,6 +395,11 @@ EOREGEX
 
 	/* Called when a row is deleted, or for the old image of an UPDATE */
 	function delete_row() {
+		$row=array();
+		foreach($this->row as $col) {
+			if($col[0] != "'") $col = "'$col'";
+			$row[] = $col;
+		}
 		//TODO: support BULK INSERT
 		$valList = "(-1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $this->row) . ")";
 		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
@@ -739,8 +744,10 @@ EOREGEX
 								 		$this->refresh_mvlog_cache();
 								}
 							}
-							$this->mvlog_table = $this->mvlogList[$this->db . $this->base_table];
-							$lastLine = $this->process_rowlog($proc, $line);
+							if(!empty($this->mvlogList[$this->db . $this->base_table])) {
+								$this->mvlog_table = $this->mvlogList[$this->db . $this->base_table];
+								$lastLine = $this->process_rowlog($proc, $line);
+							}
 							
 						}
 					} 
