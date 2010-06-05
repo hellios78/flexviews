@@ -1,6 +1,6 @@
 <?php
 
-require_once('consumer.php');
+require_once('flexcdc.php');
 $cdc = new FlexCDC();
 
 #this will read settings from the INI file and initialize
