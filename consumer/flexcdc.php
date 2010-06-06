@@ -401,7 +401,7 @@ EOREGEX
 			$row[] = $col;
 		}
 		//TODO: support BULK INSERT
-		$valList = "(-1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $this->row) . ")";
+		$valList = "(-1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $row) . ")";
 		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
 		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 	}
