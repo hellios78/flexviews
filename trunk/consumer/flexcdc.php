@@ -57,7 +57,7 @@ EOREGEX
 
 	private $serverId = NULL;
 	
-	private $binlogServerId;
+	private $binlogServerId=1;
 	
 	public  $raiseWarnings = false;
 	
