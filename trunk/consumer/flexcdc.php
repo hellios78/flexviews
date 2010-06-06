@@ -124,7 +124,7 @@ EOREGEX
 		
 	}
 	
-	public function table_exists($schema, $table) {
+	public function table_exists($schema, $table,$conn) {
 		$sql = "select 1 from information_schema.tables where table_schema='%s' and table_name='%s'";
 		$schema = mysql_real_escape_string($schema);
 		$table  = mysql_real_escape_string($table, $this->dest);
@@ -146,7 +146,7 @@ EOREGEX
 			 mysql_query('CREATE DATABASE ' . $this->mvlogDB) or die('Could not CREATE DATABASE ' . $this->mvlogDB . "\n");
 			 mysql_select_db($this->mvlogDB,$this->dest);
 		}
-		if($this->table_exists($this->mvlogDB, 'mvlogs')) {
+		if($this->table_exists($this->mvlogDB, 'mvlogs', $this->dest)) {
 			if(!$force) {
 				trigger_error('Table already exists:mvlogs  Setup aborted!' , E_USER_ERROR);
 				return false;
@@ -164,7 +164,7 @@ EOREGEX
                      ) ENGINE=INNODB DEFAULT CHARSET=utf8;"
 		            , $this->dest) or die('COULD NOT CREATE TABLE mvlogs: ' . mysql_error($this->dest) . "\n"); 
 
-		if(FlexCDC::table_exists($this->mvlogDB, 'mview_uow')) {
+		if(FlexCDC::table_exists($this->mvlogDB, 'mview_uow', $this->dest)) {
 			if(!$force) {
 				trigger_error('Table already exists:mview_uow  Setup aborted!' , E_USER_ERROR);
 				return false;
@@ -180,7 +180,7 @@ EOREGEX
 					) ENGINE=InnoDB DEFAULT CHARSET=latin1;"
 			    , $this->dest) or die('COULD NOT CREATE TABLE mview_uow: ' . mysql_error($this->dest) . "\n");
 
-		if(FlexCDC::table_exists($this->mvlogDB, 'binlog_consumer_status')) {
+		if(FlexCDC::table_exists($this->mvlogDB, 'binlog_consumer_status', $this->dest)) {
 			if(!$force) {
 				trigger_error('Table already exists:binlog_consumer_status  Setup aborted!' , E_USER_ERROR);
 				return false;
@@ -309,7 +309,6 @@ EOREGEX
 		#mysql_query("SELECT GET_LOCK('flexcdc::SOURCE_LOCK::" . $this->server_id . "',15)") or die("COULD NOT OBTAIN LOCK\n");
 		mysql_select_db($this->mvlogDB) or die('COULD NOT CHANGE DATABASE TO:' . $this->mvlogDB . "\n");
 		mysql_query("BEGIN;", $this->dest) or die(mysql_error());
-		mysql_query("CREATE TEMPORARY table log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
 		$stmt = mysql_query("SET SQL_LOG_BIN=0", $this->dest);
 		if(!$stmt) die(mysql_error());
 		
@@ -328,8 +327,12 @@ EOREGEX
 		
 		$stmt = mysql_query("SHOW BINARY LOGS", $this->source);
 		if(!$stmt) die(mysql_error());
-	
+		$has_logs = false;	
 		while($row = mysql_fetch_array($stmt)) {
+			if(!$has_logs) {
+				mysql_query("CREATE TEMPORARY table log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
+				$has_logs = true;
+			}
 			$sql = sprintf("INSERT INTO binlog_consumer_status (server_id, master_log_file, master_log_size, exec_master_log_pos) values (%d, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $this->serverId,$row['Log_name'], $row['File_size'], $row['File_size']);
 			mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 	
@@ -340,10 +343,11 @@ EOREGEX
 	
 	/* Remove any logs that have gone away */
 	function cleanup_logs() {
-		
-		// TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
-		$sql = "DELETE bcs.* FROM binlog_consumer_status bcs where server_id={$this->serverId} AND master_log_file not in (select log_name from log_list)";
-		mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
+		if(FlexCDC::table_exists($this->mvlogDB, 'log_list', $this->dest)) {	
+			// TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
+			$sql = "DELETE bcs.* FROM binlog_consumer_status bcs where server_id={$this->serverId} AND master_log_file not in (select log_name from log_list)";
+			mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
+		} 
 
 		$sql = "DROP TEMPORARY table log_list";
 		mysql_query($sql, $this->dest) or die("Could not drop TEMPORARY TABLE log_list\n");
