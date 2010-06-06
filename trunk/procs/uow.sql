@@ -115,8 +115,6 @@ BEGIN
         LEAVE wait_for_uowid;
       END IF;
 
-      SELECT SLEEP(1) INTO @discard; 
-
     END LOOP wait_for_uowid;
   END;
 
