@@ -1,4 +1,4 @@
-DELIMITER ;;
+
 /*  Flexviews for MySQL 
     Copyright 2008 Justin Swanhart
 
@@ -17,6 +17,8 @@ DELIMITER ;;
     the GPL (the LGPL) in COPYING.LESSER.
     If not, see <http://www.gnu.org/licenses/>.
 */
+
+DELIMITER ;;
 
 DROP FUNCTION IF EXISTS flexviews.uow_from_dtime;;
 
@@ -106,14 +108,22 @@ BEGIN
 
     wait_for_uowid: LOOP
 
-      SELECT uow_id
-        INTO v_uow_id
-        FROM flexviews.flexviews_mview_signal
-       WHERE signal_id = v_signal_id;
+     SELECT uow_id
+       INTO v_uow_id
+       FROM (
+          select uow_id
+          FROM flexviews.flexviews_mview_signal
+           WHERE signal_id = v_signal_id
+           UNION ALL
+           select NULL) derived
+      LIMIT 1;
+    
 
       IF (v_uow_id IS NOT NULL) THEN
         LEAVE wait_for_uowid;
       END IF;
+
+    set @nothing := SLEEP(.01);
 
     END LOOP wait_for_uowid;
   END;
