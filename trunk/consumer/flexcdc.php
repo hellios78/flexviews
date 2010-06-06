@@ -716,7 +716,7 @@ EOREGEX
 			#Control information from MySQLbinlog is prefixed with a hash comment.
 			if($prefix[0] == "#") {
 				$binlogStatement = "";
-				if (preg_match('/^#([0-9]+ [^ ]+)\s+server\s+id\s+([0-9]+)\s+end_log_pos ([0-9]+).*/', $line,$matches)) {
+				if (preg_match('/^#([0-9]+\s+[0-9:]+)\s+server\s+id\s+([0-9]+)\s+end_log_pos ([0-9]+).*/', $line,$matches)) {
 					$this->timeStamp = $matches[1];
 					$this->binlogPosition = $matches[3];
 					$this->binlogServerId = $matches[2];
