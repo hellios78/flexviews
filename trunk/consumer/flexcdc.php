@@ -262,19 +262,13 @@ EOREGEX
 				pclose($proc);
 			}
 			++$count;
-			if($iterations > 0 && $count >= $iterations) break;
-			if($processedLogs) $sleep_time=0;
-			if($iterations < 0 || $iterations > 1) {
-				#echo ".";
-				$sleep_time += 250000;
-				if($sleep_time > 1000000) $sleep_time = 1000000;
 				if($always_sleep_one_second) {
 					sleep(1);
 				} else {
-					usleep($sleep_time);	
+					usleep(250000);	
 				}
 				
-			}
+			
 			
 		}
 		return $processedLogs;
