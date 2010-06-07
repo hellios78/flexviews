@@ -1060,7 +1060,7 @@ IF flexviews.has_aggregates(v_mview_id) = 1 THEN
         WHERE mview_id = v_mview_id
           AND mview_expression = v_mview_expression
           AND mview_expr_type = 'SUM';
-
+/*
        IF v_has_count = 0 THEN
 	 CALL flexviews.add_expr(v_mview_id, 'COUNT', v_mview_expression, CONCAT(v_mview_alias, '_CNT'));
        END IF;
@@ -1068,7 +1068,7 @@ IF flexviews.has_aggregates(v_mview_id) = 1 THEN
        IF v_has_sum = 0 THEN
 	 CALL flexviews.add_expr(v_mview_id, 'SUM', v_mview_expression, CONCAT(v_mview_alias, '_SUM'));
        END IF;
-
+*/
      END LOOP;
    END;
 END IF;

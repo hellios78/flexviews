@@ -161,7 +161,7 @@ END IF;
 -- EXIT the refresh process if the consumer has not caught up to the point
 -- where the view is possible to be refreshed
 
-IF v_refreshed_to_uow_id IS NULL THEN
+IF v_refreshed_to_uow_id IS NULL AND v_mview_refresh_type = 'INCREMENTAL' THEN
   call flexviews.signal('CONSUMER_IS_BEHIND');
 END IF;
 

@@ -77,6 +77,7 @@ BEGIN
 
    IF v_mview_enabled = TRUE THEN
      SET v_sql = CONCAT('RENAME TABLE ', v_mview_schema, '.', v_mview_name, ' TO ', v_mview_schema_new, '.', v_mview_name_new);
+     SET v_sql = CONCAT(v_sql, ',', v_mview_schema, '.', v_mview_name, '_delta TO ', v_mview_schema_new, '.', v_mview_name_new, '_delta');
      SET @v_sql = v_sql;
      PREPARE mv_stmt FROM @v_sql; 
      EXECUTE mv_stmt;
