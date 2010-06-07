@@ -395,8 +395,11 @@ EOREGEX
 	function delete_row() {
 		$row=array();
 		foreach($this->row as $col) {
-			if($col[0] != "'") $col = "'$col'";
-			$row[] = $col;
+			if($col[0] == "'") {
+				 $col = trim($col,"'");
+			}
+			$col = str_replace("'","''",$col);
+			$row[] = "'$col'";
 		}
 		//TODO: support BULK INSERT
 		$valList = "(-1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $row) . ")";
@@ -410,8 +413,11 @@ EOREGEX
         //TODO: support BULK INSERT
 		$row=array();
 		foreach($this->row as $col) {
-			if($col[0] != "'") $col = "'$col'";
-			$row[] = $col;
+			if($col[0] == "'") {
+				 $col = trim($col,"'");
+			}
+			$col = str_replace("'","''",$col);
+			$row[] = "'$col'";
 		}
 		$valList = "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
 		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
