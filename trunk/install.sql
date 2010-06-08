@@ -56,7 +56,7 @@ USE flexviews;
 \. ./procs/get_grouping_list.sql
 \. ./procs/get_id.sql
 \. ./procs/get_keys.sql
-\. ./procs/get_select_list.sql
+\. ./procs/get_select.sql
 \. ./procs/get_sql.sql
 \. ./procs/get_trigger_body.sql
 \. ./procs/get_where.sql
