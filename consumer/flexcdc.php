@@ -546,7 +546,7 @@ EOREGEX
 					$sql = "DELETE from mvlogs where table_name='$old_base_table' and table_schema='$old_schema'";
 					
 					mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
-					$sql = "INSERT INTO mvlogs (mvlog_name, table_name, table_schema) values ('$new_log_table', '$new_base_table', '$new_schema')";
+					$sql = "REPLACE INTO mvlogs (mvlog_name, table_name, table_schema) values ('$new_log_table', '$new_base_table', '$new_schema')";
 					mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
 					
 					$sql = 'RENAME TABLE ' . $clause;
@@ -895,7 +895,7 @@ EOREGEX
 		$v_sql = FlexCDC::concat('CREATE TABLE IF NOT EXISTS`', $this->mvlogDB ,'`.`' ,$v_schema_name, '_', $v_table_name,'` ( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', $v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
 		$create_stmt = mysql_query($v_sql, $this->dest);
 		if(!$create_stmt) die('COULD NOT CREATE MVLOG. ' . $v_sql . "\n");
-		$exec_sql = " INSERT INTO mvlogs( table_schema , table_name , mvlog_name ) values('$v_schema_name', '$v_table_name', '" . $v_schema_name . "_" . $v_table_name . "')";
+		$exec_sql = " INSERT IGNORE INTO mvlogs( table_schema , table_name , mvlog_name ) values('$v_schema_name', '$v_table_name', '" . $v_schema_name . "_" . $v_table_name . "')";
 		mysql_query($exec_sql) or die($exec_sql . ':' . mysql_error($this->dest) . "\n");
 	
 	}
