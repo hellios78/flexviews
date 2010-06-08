@@ -87,7 +87,7 @@ DECLARE v_pos INT;
 
 SET v_mode = UPPER(v_mode);
 
-SET max_sp_recursion_depth=9999;
+SET max_sp_recursion_depth=999;
 
 IF NOT flexviews.is_enabled(v_mview_id) = 1 THEN
     CALL flexviews.signal('MV_NOT_ENABLED');
@@ -121,7 +121,7 @@ SELECT mview_refresh_type,
  WHERE mview_id = v_mview_id;
 
 SET @min_uow_id := NULL;
-
+#CUT
 IF v_signal_id IS NOT NULL AND v_refreshed_to_uow_id IS NULL THEN
   START TRANSACTION;
 
@@ -200,7 +200,6 @@ IF TRUE THEN
 
    -- this will recursively populate the materialized view delta table
    IF v_mode = 'BOTH' OR v_mode = 'COMPUTE' THEN
-     set @debug='here';
      IF v_child_mview_id IS NOT NULL THEN
        BEGIN
        DECLARE v_incremental_hwm BIGINT;
@@ -208,21 +207,51 @@ IF TRUE THEN
          -- The incremental high water mark of the dependent table may be different from 
          -- the parent table, so explicity fetch it to make sure we don't push the wrong
          -- values into the mview
-         SELECT incremental_hwm
-           INTO v_incremental_hwm
+         SELECT incremental_hwm, created_at_signal_id, refreshed_to_uow_id
+           INTO v_incremental_hwm, v_signal_id, v_refreshed_to_uow_id
            FROM mview
           WHERE mview_id = v_child_mview_id;
+	 IF v_signal_id IS NOT NULL AND v_refreshed_to_uow_id IS NULL THEN
+  START TRANSACTION;
+
+  SELECT uow_id
+    INTO v_refreshed_to_uow_id
+    FROM flexviews.flexviews_mview_signal
+   WHERE signal_id = v_signal_id 
+     and `fv$server_id` = @@server_id;
+
+  IF v_refreshed_to_uow_id IS NULL THEN
+    CALL flexviews.signal('ERROR: SIGNAL ID NOT FOUND, FlexCDC may not be caught up.');
+  END IF;
+   
+   UPDATE flexviews.mview mv
+     JOIN flexviews.mview_uow uow
+       ON uow.uow_id = v_refreshed_to_uow_id
+      AND mv.mview_id = v_child_mview_id
+      SET refreshed_to_uow_id = uow.uow_id,
+          incremental_hwm = uow.uow_id,
+          mview_last_refresh = uow.commit_time; 
+
+   COMMIT;
+
+   -- refresh these variables as they may have been changed by our UPDATE statement
+SELECT incremental_hwm
+  INTO v_incremental_hwm
+  FROM flexviews.mview
+ WHERE mview_id = v_child_mview_id;
+
+END IF;
+
 
          SET @now := UNIX_TIMESTAMP(NOW());
 
-	 SET @debug = concat('child_id:', v_child_mview_id,' hwm: ', v_incremental_hwm, ' uow: ', v_current_uow_id);
          CALL flexviews.execute_refresh(v_child_mview_id, v_incremental_hwm, v_current_uow_id, 1);
          SET @compute_time = UNIX_TIMESTAMP(NOW()) - @now;
 
          UPDATE flexviews.mview_compute_schedule
             SET last_computed_at = now(),
                 last_compute_elapsed_seconds = @compute_time
-          WHERE mview_id = v_mview_id;
+          WHERE mview_id = v_child_mview_id;
 
         END;
      END IF;

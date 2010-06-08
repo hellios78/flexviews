@@ -802,7 +802,7 @@ selectLoop: LOOP
     SET v_select_list = CONCAT(v_select_list,v_mview_expression, ' as `', v_mview_alias, '`');   
   ELSE
     SET v_select_list = CONCAT(v_select_list, 0, ' as `', v_mview_alias, '`,');   
-    SET v_select_list = CONCAT(v_select_list, 'SUM(',v_dml_type, ' * cast(', v_mview_expression, ' as signed)) as `', v_mview_alias, '_sum`,');
+    SET v_select_list = CONCAT(v_select_list, 'SUM(',v_dml_type, ' * cast(', v_mview_expression, ' as decimal(50,15))) as `', v_mview_alias, '_sum`,');
     SET v_select_list = CONCAT(v_select_list, 'SUM(IF(',v_mview_expression,' IS NULL,0,', v_dml_type, ')) as `', v_mview_alias, '_cnt`');
   END IF;
 END LOOP;  
