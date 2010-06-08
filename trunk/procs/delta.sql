@@ -410,6 +410,8 @@ END IF;  -- setup complete
 
 -- We update the values in table_list.
 -- We need to restore the originals so save them.
+
+-- FIXME: DEPENDENT RERESH BREAKS HERE :(
 DELETE FROM flexviews.table_list_old WHERE depth >= @__compute_delta_depth;
 INSERT INTO flexviews.table_list_old 
 SELECT * 
@@ -800,7 +802,7 @@ selectLoop: LOOP
     SET v_select_list = CONCAT(v_select_list,v_mview_expression, ' as `', v_mview_alias, '`');   
   ELSE
     SET v_select_list = CONCAT(v_select_list, 0, ' as `', v_mview_alias, '`,');   
-    SET v_select_list = CONCAT(v_select_list, 'SUM(',v_dml_type, ' * ', v_mview_expression, ') as `', v_mview_alias, '_sum`,');
+    SET v_select_list = CONCAT(v_select_list, 'SUM(',v_dml_type, ' * cast(', v_mview_expression, ' as signed)) as `', v_mview_alias, '_sum`,');
     SET v_select_list = CONCAT(v_select_list, 'SUM(IF(',v_mview_expression,' IS NULL,0,', v_dml_type, ')) as `', v_mview_alias, '_cnt`');
   END IF;
 END LOOP;  
@@ -1159,7 +1161,7 @@ selectLoop: LOOP
   SET v_mview_expression := CONCAT('(`', v_alias, '`.`', v_mview_alias, '`)'); 
   IF v_mview_expr_type != 'GROUP' AND v_mview_expr_type != 'COLUMN' THEN
     IF v_mview_expr_type = 'COUNT_DISTINCT' THEN
-      SET v_mview_expression := CONCAT('COUNT(DISTINCT ', v_mview_expression);
+      SET v_mview_expression := CONCAT('COUNT(DISTINCT ', v_mview_expression,')');
     ELSE
       SET v_mview_expression := CONCAT(v_mview_expr_type, v_mview_expression);
     END IF;

@@ -200,6 +200,7 @@ IF TRUE THEN
 
    -- this will recursively populate the materialized view delta table
    IF v_mode = 'BOTH' OR v_mode = 'COMPUTE' THEN
+     set @debug='here';
      IF v_child_mview_id IS NOT NULL THEN
        BEGIN
        DECLARE v_incremental_hwm BIGINT;
@@ -213,6 +214,8 @@ IF TRUE THEN
           WHERE mview_id = v_child_mview_id;
 
          SET @now := UNIX_TIMESTAMP(NOW());
+
+	 SET @debug = concat('child_id:', v_child_mview_id,' hwm: ', v_incremental_hwm, ' uow: ', v_current_uow_id);
          CALL flexviews.execute_refresh(v_child_mview_id, v_incremental_hwm, v_current_uow_id, 1);
          SET @compute_time = UNIX_TIMESTAMP(NOW()) - @now;
 
@@ -264,7 +267,6 @@ IF TRUE THEN
             AND mview_expr_type in('MIN','MAX','COUNT_DISTINCT');
          
          SET v_agg_set = LEFT(v_agg_set, LENGTH(v_agg_set)-1);
-
          SET v_sql = CONCAT('UPDATE ', v_mview_schema, '.', v_mview_name, '\n',
                             '  JOIN (\n', 
                             'SELECT ', get_child_select(v_mview_id, 'cv'), '\n',
@@ -279,9 +281,11 @@ IF TRUE THEN
                            );
 	 SET @J = v_sql;
          SET @v_sql = v_sql;
+
          PREPARE update_stmt from @v_sql;
          EXECUTE update_stmt;   
          DEALLOCATE PREPARE update_stmt;
+
       END IF;
 
       SET @now := UNIX_TIMESTAMP(NOW());
