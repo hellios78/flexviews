@@ -573,7 +573,7 @@ EOREGEX
 						break;
 					}
 				}
-				preg_match('/\s+table\s+([^ ]+)/i', $sql, $matches);
+				if(!preg_match('/\s+table\s+([^ ]+)/i', $sql, $matches)) return;
 				
 				if(empty($this->mvlogList[str_replace('.','',trim($matches[1]))])) {
 					return;
