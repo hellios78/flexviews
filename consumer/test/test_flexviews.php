@@ -1,51 +1,51 @@
 <?php 
 require_once('../flexcdc.php');
-/*
-$cdc = new FlexCDC(	parse_ini_file('./test_consumer.ini', true));
-$cdc->capture_changes();
-exit;
-*/
 
+#this test uses the FlexCDC object to make a connection to the destination MySQL server
+#this test DOES NOT RUN FlexCDC!!!! You must run an external consumer connected to the
+#sandbox database
 $settings = parse_ini_file('./test_consumer.ini', true);
 $settings['flexcdc']['database']='flexviews';
 
 class ConsumerTest extends PHPUnit_Framework_TestCase
 {   
     public function testInstaller() {
-		global $settings;
+	global $settings;
         $cdc = new FlexCDC($settings);
         $this->assertTrue($cdc->get_source() && $cdc->get_dest());
         $conn = $cdc->get_dest();
-        mysql_query('DROP DATABASE IF EXISTS flexviews') or die(mysql_error() . "\n");
         mysql_query('DROP DATABASE IF EXISTS test') or die(mysql_error() . "\n");
-        $this->assertFalse(!mysql_query('RESET MASTER', $conn));
-        $cdc->setup();
         
-		#keep moving up directories looking for the installer.  error out when we can move no further up
-		while(1) {
-			$this->assertTrue(chdir('..')); 
-			if(file_exists('./install.sql')) 
-			  break;
-		}
-		$output = `test/sandbox/use -uroot -pmsandbox < install.sql`;
-		$this->assertTrue(md5($output) == "b83cfd9e5fd29f1c458f8d4070c86511");
+	#keep moving up directories looking for the installer.  error out when we can move no further up
+	while(1) {
+		$this->assertTrue(chdir('..')); 
+		if(file_exists('./install.sql')) break;
+	}
+	$output = `test/sandbox/use -uroot -pmsandbox < install.sql`;
+	$this->assertTrue(md5($output) == "b83cfd9e5fd29f1c458f8d4070c86511");
 		
-		$cdc->raiseWarnings = false;
-		
-		$conn = $cdc->get_source();
+	$conn = $cdc->get_source();
     	$sql = "CREATE DATABASE IF NOT EXISTS test";
     	mysql_query($sql,$conn);
     	$sql = "CREATE TABLE test.t1 (c1 int primary key)";
     	mysql_query($sql, $conn);
+
+    	$sql = "CALL flexviews.create_mvlog('test','t1')";
+    	mysql_query($sql, $conn);
+
     	$sql = "INSERT INTO test.t1 values (1),(2),(3)";
     	mysql_query($sql, $conn);
     	$sql = "CREATE TABLE test.t2 (c1 int, c2 int, primary key(c2), key(c1))";
     	mysql_query($sql, $conn);
+
+    	$sql = "CALL flexviews.create_mvlog('test','t2')";
+    	mysql_query($sql, $conn);
+
     	$sql = "INSERT INTO test.t2 values (1,1),(2,2),(3,3),(1,4)";
     	mysql_query($sql, $conn);
-    	$cdc->capture_changes();
+
     	#VERIFY THAT FLEXCDC IS WORKING - The consumer is going to run in the background 
-    	#for the rest of the test
+	sleep(1);
     	$sql = "select count(*) from flexviews.test_t1";
     	$stmt = mysql_query($sql, $conn) or die(mysql_error() . "\n");
         return $cdc;
