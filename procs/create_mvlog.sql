@@ -114,7 +114,7 @@ BEGIN
   EXECUTE create_stmt;
   DEALLOCATE PREPARE create_stmt; 
 
-  INSERT INTO flexviews.mvlogs (table_schema, table_name, mvlog_name) values (v_schema_name, v_table_name, v_mvlog_name);
+  REPLACE INTO flexviews.mvlogs (table_schema, table_name, mvlog_name) values (v_schema_name, v_table_name, v_mvlog_name);
 
 END ;;
 

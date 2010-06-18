@@ -123,7 +123,7 @@ BEGIN
         LEAVE wait_for_uowid;
       END IF;
 
-    set @nothing := SLEEP(.01);
+    set @nothing := SLEEP(.005);
 
     END LOOP wait_for_uowid;
   END;
