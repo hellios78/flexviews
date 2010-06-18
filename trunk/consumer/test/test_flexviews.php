@@ -4,7 +4,7 @@ require_once('../flexcdc.php');
 #this test uses the FlexCDC object to make a connection to the destination MySQL server
 #this test DOES NOT RUN FlexCDC!!!! You must run an external consumer connected to the
 #sandbox database
-$settings = parse_ini_file('./test_consumer.ini', true);
+$settings = parse_ini_file('./test_flexviews.ini', true);
 $settings['flexcdc']['database']='flexviews';
 
 class ConsumerTest extends PHPUnit_Framework_TestCase
@@ -13,7 +13,7 @@ class ConsumerTest extends PHPUnit_Framework_TestCase
 	global $settings;
         $cdc = new FlexCDC($settings);
         $this->assertTrue($cdc->get_source() && $cdc->get_dest());
-        $conn = $cdc->get_dest();
+        $conn = $cdc->get_source();
         mysql_query('DROP DATABASE IF EXISTS test') or die(mysql_error() . "\n");
         
 	#keep moving up directories looking for the installer.  error out when we can move no further up
@@ -22,9 +22,9 @@ class ConsumerTest extends PHPUnit_Framework_TestCase
 		if(file_exists('./install.sql')) break;
 	}
 	$output = `test/sandbox/use -uroot -pmsandbox < install.sql`;
+	echo md5($output);
 	$this->assertTrue(md5($output) == "b83cfd9e5fd29f1c458f8d4070c86511");
 		
-	$conn = $cdc->get_source();
     	$sql = "CREATE DATABASE IF NOT EXISTS test";
     	mysql_query($sql,$conn);
     	$sql = "CREATE TABLE test.t1 (c1 int primary key)";
