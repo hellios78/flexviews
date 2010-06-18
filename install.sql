@@ -72,6 +72,10 @@ USE flexviews;
 \. ./procs/uow.sql
 \. ./procs/get_setting.sql
 \. ./procs/fvrand.sql
+\. ./procs/refresh_all.sql
+
+\. ./events/apply.sql
+\. ./events/compute.sql
 
 REPLACE into flexviews.mview_settings values ('mvlog_db', 'flexviews');
 set @uow_id = NULL;
