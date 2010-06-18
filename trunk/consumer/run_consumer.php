@@ -39,21 +39,6 @@ if(!empty($params['ini'])) {
 	$settings = @parse_ini_file($params['ini'], true);
 }
 
-#support pid file
-if(!empty($params['pid'])) {
-	if(file_exists($params['pid'])) {
-		$pid = trim(file_get_contents($params['pid']));
-		$exists = `ps -p $pid`;
-		$exists = explode('\n', $exists);
-		if(count($exists) > 1) {
-			die('Already running!\n');
-		} else {
-			echo "Stale lockfile detected.\n";
-		}
-	}
-	file_put_contents($params['pid'], getmypid());
-}
-
 if(in_array('daemon', array_keys($params))) {
 	$pid = pcntl_fork();
 	if($pid == -1) {
@@ -68,9 +53,24 @@ if(in_array('daemon', array_keys($params))) {
 	}
 }
 
+#support pid file
+if(!empty($params['pid'])) {
+	if(file_exists($params['pid'])) {
+		$pid = trim(file_get_contents($params['pid']));
+
+		$ps = `ps -p$pid`;
+
+		if(preg_match('/php/i',$ps)) {
+			die("Already running!\n");
+		} else {
+			echo "Stale lockfile detected.\n";
+		}
+	}
+	file_put_contents($params['pid'], getmypid());
+}
+
+
 require_once('flexcdc.php');
 $cdc = new FlexCDC($settings);
-#TODO: daemonize on unix
 #capture changes forever (-1):
-
 $cdc->capture_changes(-1);
