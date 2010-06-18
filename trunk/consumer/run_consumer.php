@@ -1,4 +1,15 @@
 <?php
+declare(ticks = 1);
+
+function sig_handler($signo)
+{
+     switch ($signo) {
+         case SIGTERM:
+         case SIGHUP:
+	     exit;
+     }
+}
+
 require_once('Console/Getopt.php');
 #
 #if(!function_exists('pcntl_fork')) {
@@ -46,7 +57,8 @@ if(in_array('daemon', array_keys($params))) {
 	} elseif($pid == 0) {
 		#we are now in a child process, and the capture_changes
 	        #below will be daemonized
-		$do_nothing = 1;
+		pcntl_signal(SIGTERM, "sig_handler");
+		pcntl_signal(SIGHUP,  "sig_handler");
 	} else {
 		#return control to the shell
 		exit();
