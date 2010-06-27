@@ -125,11 +125,12 @@ SET @min_uow_id := NULL;
 IF v_signal_id IS NOT NULL AND v_refreshed_to_uow_id IS NULL THEN
   START TRANSACTION;
 
-  SELECT uow_id
+  SELECT MAX(uow_id)
     INTO v_refreshed_to_uow_id
     FROM flexviews.flexviews_mview_signal
    WHERE signal_id = v_signal_id 
-     and `fv$server_id` = @@server_id;
+     and `fv$server_id` = @@server_id 
+     and dml_type = 1;
 
   IF v_refreshed_to_uow_id IS NULL THEN
     CALL flexviews.signal('ERROR: SIGNAL ID NOT FOUND');
@@ -214,11 +215,12 @@ IF TRUE THEN
 	 IF v_signal_id IS NOT NULL AND v_refreshed_to_uow_id IS NULL THEN
   START TRANSACTION;
 
-  SELECT uow_id
+  SELECT MAX(uow_id)
     INTO v_refreshed_to_uow_id
     FROM flexviews.flexviews_mview_signal
    WHERE signal_id = v_signal_id 
-     and `fv$server_id` = @@server_id;
+     and `fv$server_id` = @@server_id 
+     and dml_type = 1;
 
   IF v_refreshed_to_uow_id IS NULL THEN
     CALL flexviews.signal('ERROR: SIGNAL ID NOT FOUND, FlexCDC may not be caught up.');
@@ -289,13 +291,18 @@ END IF;
            FROM flexviews.mview
           WHERE mview_id = v_child_mview_id;
 
-         SELECT group_concat(concat('`' , v_mview_name, '`.`',mview_alias,'` = `x_alias`.`',mview_alias, '`'),'\n,')
+         SELECT group_concat(concat('`' , v_mview_name, '`.`',mview_alias,'` = `x_alias`.`',mview_alias, '`'),'\n')
            INTO v_agg_set
            FROM flexviews.mview_expression 
           WHERE mview_id = v_mview_id
             AND mview_expr_type in('MIN','MAX','COUNT_DISTINCT');
-         
-         SET v_agg_set = LEFT(v_agg_set, LENGTH(v_agg_set)-1);
+
+	 SET @debug=v_agg_set;
+        
+         IF (LEFT(v_agg_set, -1) = ',') THEN
+           SET v_agg_set = LEFT(v_agg_set, LENGTH(v_agg_set)-1);
+         END IF;
+ 
          SET v_sql = CONCAT('UPDATE ', v_mview_schema, '.', v_mview_name, '\n',
                             '  JOIN (\n', 
                             'SELECT ', get_child_select(v_mview_id, 'cv'), '\n',
