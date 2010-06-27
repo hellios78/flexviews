@@ -108,12 +108,13 @@ BEGIN
 
     wait_for_uowid: LOOP
 
-     SELECT uow_id
+     SELECT max(uow_id)
        INTO v_uow_id
        FROM (
           select uow_id
           FROM flexviews.flexviews_mview_signal
            WHERE signal_id = v_signal_id
+             AND dml_type = 1
            UNION ALL
            select NULL) derived
       LIMIT 1;
