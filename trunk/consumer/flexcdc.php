@@ -19,6 +19,7 @@
 */
 
 error_reporting(E_ALL);
+ini_set('memory_limit', 1024 * 1024 * 1024);
 
 class FlexCDC {
 	static function concat() {
@@ -45,6 +46,10 @@ EOREGEX
 
 	}
   	
+	# Settings to enable bulk import
+	private $inserts = array();
+	private $deletes = array();
+	private $bulk_insert = false;
   	
 	private $mvlogDB = NULL;
 	public	$mvlogList = array();
@@ -109,6 +114,10 @@ EOREGEX
 
 		if(!empty($settings['raise_warnings']) && $settings['raise_warnings'] != 'false') {
  			$this->raiseWarnings=true;
+		}
+
+		if(!empty($settings['flexcdc']['bulk_insert']) && $settings['flexcdc']['bulk_insert'] != 'false') {
+			$this->bulk_insert = true;
 		}
 	
 		/*TODO: support unix domain sockets */
@@ -311,6 +320,11 @@ EOREGEX
 		mysql_query("BEGIN;", $this->dest) or die(mysql_error());
 		$stmt = mysql_query("SET SQL_LOG_BIN=0", $this->dest);
 		if(!$stmt) die(mysql_error());
+
+		$stmt = mysql_query("select @@max_allowed_packet", $this->dest);
+		$row = mysql_fetch_array($stmt);
+		$this->max_allowed_packet = $row[0];	
+
 		
 	}
 	
@@ -324,6 +338,16 @@ EOREGEX
 		$stmt = mysql_query($sql, $this->source);
 		$row = mysql_fetch_array($stmt) or die($sql . "\n" . mysql_error() . "\n");
 		$this->serverId = $row[0];
+
+
+		$sql = "select @@binlog_format";
+		$stmt = mysql_query($sql, $this->dest);
+		$row = mysql_fetch_array($stmt) or die($sql . "\n" . mysql_error() . "\n");
+
+		if($row[0] != 'ROW') {
+			echo "FlexCDC REQUIRES that the source database be using ROW binlog_format!\n";
+			exit;
+		}
 		
 		$stmt = mysql_query("SHOW BINARY LOGS", $this->source);
 		if(!$stmt) die(mysql_error());
@@ -377,7 +401,12 @@ EOREGEX
     
     /* Called when a transaction commits */
 	function commit_transaction() {
-		//TODO: support BULK INSERT	
+		//Handle bulk insertion of changes
+		if(!empty($this->inserts) || !empty($this->deletes)) {
+			$this->process_rows();
+		}
+		$this->inserts = $this->deletes = array();
+
 		$this->set_capture_pos();
 		mysql_query("COMMIT", $this->dest) or die("COULD NOT COMMIT TRANSACTION;\n" . mysql_error());
 	}
@@ -393,36 +422,84 @@ EOREGEX
 
 	/* Called when a row is deleted, or for the old image of an UPDATE */
 	function delete_row() {
-		$row=array();
-		foreach($this->row as $col) {
-			if($col[0] == "'") {
-				 $col = trim($col,"'");
+		if ( $this->bulk_insert ) {
+			$this->deletes[] = $this->row;
+		} else {
+			$row=array();
+			foreach($this->row as $col) {
+				if($col[0] == "'") {
+					 $col = trim($col,"'");
+				}
+				$col = str_replace("'","''",$col);
+				$row[] = "'$col'";
 			}
-			$col = str_replace("'","''",$col);
-			$row[] = "'$col'";
+			$valList = "(-1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $row) . ")";
+			$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
+			mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 		}
-		//TODO: support BULK INSERT
-		$valList = "(-1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $row) . ")";
-		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
-		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 	}
 
 	/* Called when a row is inserted, or for the new image of an UPDATE */
 	function insert_row() {
-
-        //TODO: support BULK INSERT
-		$row=array();
-		foreach($this->row as $col) {
-			if($col[0] == "'") {
-				 $col = trim($col,"'");
+		if ( $this->bulk_insert ) {
+			$this->inserts[] = $this->row;
+		} else {
+			$row=array();
+			foreach($this->row as $col) {
+				if($col[0] == "'") {
+					 $col = trim($col,"'");
+				}
+				$col = str_replace("'","''",$col);
+				$row[] = "'$col'";
 			}
-			$col = str_replace("'","''",$col);
-			$row[] = "'$col'";
+			$valList = "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
+			$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
+			mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 		}
-		$valList = "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
-		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
-		mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 	}
+
+	function process_rows() {
+		$i = 0;
+		$valList =  "";
+
+		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES ", $this->mvlogDB, $this->mvlog_table );
+		
+		while($i<2) {
+			if ($i==0) {
+				$rows = $this->inserts;
+				$mode = 1;
+			} else {
+				$rows = $this->deletes;
+				$mode = -1;
+			}		
+			foreach($rows as $the_row) {	
+				$row = array();
+				foreach($the_row as $col) {
+					if($col[0] == "'") {
+						$col = trim($col,"'");
+					}
+					$col = str_replace("'","''",$col);
+					$row[] = "'$col'";
+				}
+				if($valList) $valList .= ",\n";	
+				$valList .= "($mode, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
+				$bytes = strlen($valList) + strlen($sql);
+				$allowed = floor($bytes * .99);  #allowed len is 99% of max_allowed_packet	
+				if($bytes > $allowed) {
+					mysql_query($sql . $valList, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
+					$valList = "";
+				}
+				
+			}
+			++$i;
+		}
+
+		if($valList) {
+			mysql_query($sql . $valList, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
+		}
+
+	}
+
 	/* Called for statements in the binlog.  It is possible that this can be called more than
 	 * one time per event.  If there is a SET INSERT_ID, SET TIMESTAMP, etc
 	 */	
