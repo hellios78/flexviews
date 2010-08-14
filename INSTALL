@@ -5,6 +5,10 @@ Installation:
  * cp consumer.ini.example consumer.ini
  * MODIFY consumer.ini appropriately!
  * php consumer/setup.php
+   :: BINARY LOGGING MUST BE ENABLED
+   :: SERVER_ID MUST BE SET
+   :: BINLOG_FORMAT=ROW IS REQUIRED
+
  * if no errors, then proceed
 
  * run the consumer (there is a PHP file provided)
