@@ -280,11 +280,10 @@ END IF;
             SET mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
           WHERE mview_id = v_child_mview_id;
 
-      UPDATE flexviews.mview_apply_schedule
-         SET last_applied_at = now(),
-             last_apply_elapsed_seconds = @compute_time
-       WHERE mview_id = v_mview_id;
-
+         UPDATE flexviews.mview_apply_schedule
+            SET last_applied_at = now(),
+                last_apply_elapsed_seconds = @compute_time
+          WHERE mview_id = v_mview_id;
 
 	 SELECT CONCAT(mview_schema, '.', mview_name)
            INTO v_child_mview_name
@@ -295,7 +294,7 @@ END IF;
            INTO v_agg_set
            FROM flexviews.mview_expression 
           WHERE mview_id = v_mview_id
-            AND mview_expr_type in('MIN','MAX','COUNT_DISTINCT');
+            AND mview_expr_type in('MIN','MAX','COUNT_DISTINCT', 'STDDEV','VAR_POP');
 
 	 SET @debug=v_agg_set;
         

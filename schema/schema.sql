@@ -51,7 +51,7 @@ CREATE TABLE `mview_expression` (
   `mview_expression_id` int(11) NOT NULL auto_increment,
   `mview_id` int(11) default NULL,
 
-  `mview_expr_type` enum('GROUP','SUM','AVG','COUNT','MIN','MAX','WHERE','PRIMARY','KEY','COLUMN','COUNT_DISTINCT') DEFAULT 'GROUP',
+  `mview_expr_type` enum('GROUP','SUM','AVG','COUNT','MIN','MAX','WHERE','PRIMARY','KEY','COLUMN','COUNT_DISTINCT','STDDEV','VAR_POP') DEFAULT 'GROUP',
   `mview_expression` varchar(1000),
   `mview_alias` varchar(100) default NULL,
   `mview_expr_order` int(11) default '999',
