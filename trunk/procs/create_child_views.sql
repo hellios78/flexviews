@@ -29,7 +29,7 @@ BEGIN
     INTO v_needs_dependent_view
     FROM flexviews.mview_expression
    WHERE mview_id = v_mview_id
-     AND mview_expr_type in ('MIN','MAX','COUNT_DISTINCT');
+     AND mview_expr_type in ('MIN','MAX','COUNT_DISTINCT', 'STDDEV','VAR_POP');
 
    -- Destroy any existing child materialization
    SET v_new_mview_id := flexviews.get_id(flexviews.get_setting('mvlog_db'), concat('mv$', v_mview_id));
@@ -67,13 +67,13 @@ BEGIN
       (mview_expression_id, mview_id, mview_expr_type, mview_expression, mview_alias, mview_expr_order)
       SELECT NULL,
 	     v_new_mview_id,
-             if(mview_expr_type not in ('MIN','MAX','COUNT_DISTINCT'), mview_expr_type, 'GROUP'),
+             if(mview_expr_type not in ('MIN','MAX','COUNT_DISTINCT','STDDEV','VAR_POP'), mview_expr_type, 'GROUP'),
              mview_expression,
              mview_alias,         
              mview_expr_order
         FROM flexviews.mview_expression
        WHERE mview_id = v_mview_id
-         AND mview_expr_type in ('GROUP','WHERE','MIN','MAX','COUNT_DISTINCT');
+         AND mview_expr_type in ('GROUP','WHERE','MIN','MAX','COUNT_DISTINCT', 'STDDEV','VAR_POP');
 
 
        -- Add a COUNT(*) as `CNT` since it would be added automatically anyway

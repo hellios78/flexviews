@@ -36,7 +36,7 @@ SELECT mview_expr_type,
        mview_alias
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
-   AND m.mview_expr_type in ('COLUMN','COUNT_DISTINCT','MIN','MAX', 'AVG', 'SUM', 'GROUP','COUNT')
+   AND m.mview_expr_type in ('COLUMN','COUNT_DISTINCT','MIN','MAX', 'AVG', 'SUM', 'GROUP','COUNT','STDDEV','VAR_POP')
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
@@ -111,7 +111,9 @@ selectLoop: LOOP
            v_mview_expr_type   = 'MIN' OR
            v_mview_expr_type   = 'MAX' OR 
            v_mview_expr_type   = 'SUM' OR
-           v_mview_expr_type   = 'COUNT_DISTINCT' THEN
+           v_mview_expr_type   = 'COUNT_DISTINCT' OR
+	   v_mview_expr_type   = 'STDDEV' OR
+           v_mview_expr_type   = 'VAR_POP'  THEN
 
                 IF v_mview_expr_type = 'GROUP' OR v_mview_expr_type = 'COLUMN' THEN
                   SET v_mview_expr_type = '';
@@ -123,7 +125,7 @@ selectLoop: LOOP
                 END IF;      
                 IF v_mode = 'LOG' THEN        
                         IF v_mview_expr_type != '' THEN
-                          IF v_mview_expr_type != 'MIN' AND v_mview_expr_type != 'MAX' THEN
+                          IF v_mview_expr_type != 'MIN' AND v_mview_expr_type != 'MAX' AND v_mview_expr_type != 'STDDEV' AND v_mview_expr_type != 'VAR_POP' THEN
                             SET v_select_list = CONCAT(v_select_list, v_mview_expr_type, '(mview_type * ', v_mview_expression,') as ', v_mview_alias);         
                           ELSE
                             SET v_select_list = CONCAT(v_select_list, ' 0 as ', v_mview_alias);  

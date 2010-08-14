@@ -31,7 +31,7 @@ DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
  *   This adds the specified expression to the materialized view. If using aggregate functions, non-aggregated columns in the SELECT clause are GROUP expressions, otherwise, SELECT expressions are COLUMN expressions. Column references within an expression (regardless of type) must be fully qualified with the TABLE_ALIAS specified in flexviews.ADD_TABLE(). WHERE expressions are added to the WHERE clause of the view. The PRIMARY and KEY expressions represent keys on the materialized view table. Note that PRIMARY and KEY expressions do not reference base table columns, but instead you must specify one or more EXPR_ALIAS(es) previously defined.
  * INPUTS
  *   * v_mview_id -- The materialized view id (see flexviews.get_id)
- *   * v_expr_type -- GROUP|COLUMN|SUM|COUNT|MIN|MAX|AVG|COUNT_DISTINCT|PRIMARY|KEY
+ *   * v_expr_type -- GROUP|COLUMN|SUM|COUNT|MIN|MAX|AVG|COUNT_DISTINCT|PRIMARY|KEY|STDDEV|VAR_POP
  *   * v_expr -- The expression to add.  
  *      Any columns in the expression must be prefixed with a table alias created with flexviews.add_table.  
  *      When the PRIMARY or KEY expression types are used, the user must specify one more more aliases to
@@ -47,10 +47,12 @@ DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
  *   |html <tr><td>COLUMN</td><td>Simply project this expression.  Only works for views without aggregation.    
  *   |html </tr><tr><td>COUNT<td>Count rows or expressions
  *   |html </tr><tr><td>SUM<td>SUM adds the value of each expression.  SUM(distinct) is not yet supported.
- *   |html </tr><tr><td>MIN<td>Experimental MIN support  (uses auxilliary view)
- *   |html </tr><tr><td>MAX<td>Experimental MAX support  (uses auxilliary view)
- *   |html </tr><tr><td>AVG<td>Experimental AVG support  (adds SUM and COUNT expressions automatically)
+ *   |html </tr><tr><td>MIN<td>MIN (uses auxilliary view)
+ *   |html </tr><tr><td>MAX<td>MAX support  (uses auxilliary view)
+ *   |html </tr><tr><td>AVG<td>AVG support  (adds SUM and COUNT expressions automatically)
  *   |html </tr><tr><td>COUNT_DISTINCT<td>Experimental COUNT(DISTINCT) support (uses auxilliary view)
+ *   |html </tr><tr><td>STDDEV<td>Experimental STDDEV support (uses auxilliary view)
+ *   |html </tr><tr><td>VAR_POP<td>Experimental VAR_POP support (uses auxilliary view)
  *   |html </tr><tr><td>PRIMARY<td>Adds a primary key to the view.  Specify column aliases in v_expr.  
  *   |html </tr><tr><td>KEY<td>Adds an index to the view.  Specify column aliases in v_expr.
  *   |html </tr></table>

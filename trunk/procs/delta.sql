@@ -751,7 +751,7 @@ SELECT mview_expr_type,
        mview_alias
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
-   AND m.mview_expr_type in ( 'AVG','COLUMN','GROUP','SUM','COUNT','MIN','MAX','COUNT_DISTINCT' )
+   AND m.mview_expr_type in ( 'AVG','COLUMN','GROUP','SUM','COUNT','MIN','MAX','COUNT_DISTINCT','STDDEV','VAR_POP' )
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
@@ -1140,7 +1140,7 @@ SELECT mview_expr_type,
        mview_alias
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
-   AND m.mview_expr_type in ( 'COLUMN', 'GROUP', 'MIN','MAX','COUNT_DISTINCT' )
+   AND m.mview_expr_type in ( 'COLUMN', 'GROUP', 'MIN','MAX','COUNT_DISTINCT', 'STDDEV','VAR_POP' )
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
