@@ -345,7 +345,7 @@ EOREGEX
 		$row = mysql_fetch_array($stmt) or die($sql . "\n" . mysql_error() . "\n");
 
 		if($row[0] != 'ROW') {
-			echo "FlexCDC REQUIRES that the source database be using ROW binlog_format!\n";
+			echo "Exiting due to error: FlexCDC REQUIRES that the source database be using ROW binlog_format!\n";
 			exit;
 		}
 		
