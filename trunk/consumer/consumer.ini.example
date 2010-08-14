@@ -16,7 +16,7 @@ database=flexviews
 
 ;In those situations, instead set auto_changelog=false and use the flexviews.create_mvlog function (included in Flexviews)
 ;You can also call the public function flexviews.create_mvlog() (see flexcdc.php)
-auto_changelog=true
+auto_changelog=false
 
 ;If you set raise_warnings=true then when Flexviews sees an unsupported command (like DROP) it raises a warning to
 ;stdout.  You might want to use the 'logger' utility to capture the output if you turn this on
