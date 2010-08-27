@@ -28,7 +28,7 @@ CREATE TABLE `categories` (
   `Description` text,
   `Picture` varchar(40) DEFAULT NULL,
   PRIMARY KEY (`CategoryID`)
-) ENGINE=MyISAM AUTO_INCREMENT=9 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=latin1;
 
 --
 -- Dumping data for table `categories`
@@ -59,7 +59,7 @@ CREATE TABLE `customers` (
   `Phone` varchar(24) DEFAULT NULL,
   `Fax` varchar(24) DEFAULT NULL,
   PRIMARY KEY (`CustomerID`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 --
 -- Dumping data for table `customers`
@@ -96,7 +96,7 @@ CREATE TABLE `employees` (
   `Notes` text,
   `ReportsTo` int(11) DEFAULT NULL,
   PRIMARY KEY (`EmployeeID`)
-) ENGINE=MyISAM AUTO_INCREMENT=10 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=latin1;
 
 --
 -- Dumping data for table `employees`
@@ -122,7 +122,7 @@ CREATE TABLE `order_details` (
   `Quantity` smallint(6) DEFAULT '1',
   `Discount` float(1,0) DEFAULT '0',
   PRIMARY KEY (`odID`)
-) ENGINE=MyISAM AUTO_INCREMENT=2156 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=2156 DEFAULT CHARSET=latin1;
 
 --
 -- Dumping data for table `order_details`
@@ -156,7 +156,7 @@ CREATE TABLE `orders` (
   `ShipPostalCode` varchar(10) DEFAULT NULL,
   `ShipCountry` varchar(15) DEFAULT NULL,
   PRIMARY KEY (`OrderID`)
-) ENGINE=MyISAM AUTO_INCREMENT=11078 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=11078 DEFAULT CHARSET=latin1;
 
 --
 -- Dumping data for table `orders`
@@ -186,7 +186,7 @@ CREATE TABLE `products` (
   `ReorderLevel` smallint(6) DEFAULT '0',
   `Discontinued` tinyint(1) DEFAULT '0',
   PRIMARY KEY (`ProductID`)
-) ENGINE=MyISAM AUTO_INCREMENT=78 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=78 DEFAULT CHARSET=latin1;
 
 --
 -- Dumping data for table `products`
@@ -209,7 +209,7 @@ CREATE TABLE `shippers` (
   `CompanyName` varchar(40) DEFAULT NULL,
   `Phone` varchar(24) DEFAULT NULL,
   PRIMARY KEY (`ShipperID`)
-) ENGINE=MyISAM AUTO_INCREMENT=4 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=latin1;
 
 --
 -- Dumping data for table `shippers`
@@ -241,7 +241,7 @@ CREATE TABLE `suppliers` (
   `Fax` varchar(24) DEFAULT NULL,
   `HomePage` text,
   PRIMARY KEY (`SupplierID`)
-) ENGINE=MyISAM AUTO_INCREMENT=30 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=30 DEFAULT CHARSET=latin1;
 
 --
 -- Dumping data for table `suppliers`
