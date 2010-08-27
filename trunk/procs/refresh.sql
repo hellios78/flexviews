@@ -163,7 +163,7 @@ END IF;
 -- where the view is possible to be refreshed
 
 IF v_refreshed_to_uow_id IS NULL AND v_mview_refresh_type = 'INCREMENTAL' THEN
-  call flexviews.signal('CONSUMER_IS_BEHIND');
+  call flexviews.signal(concat('CONSUMER_IS_BEHIND or specified mview:', v_mview_id, ' does not exist.'));
 END IF;
 
 SELECT mview_id
@@ -294,7 +294,7 @@ END IF;
            INTO v_agg_set
            FROM flexviews.mview_expression 
           WHERE mview_id = v_mview_id
-            AND mview_expr_type in('MIN','MAX','COUNT_DISTINCT', 'STDDEV','VAR_POP');
+            AND mview_expr_type in('MIN','MAX','COUNT_DISTINCT', 'STDDEV_POP','STDDEV_SAMP','VAR_SAMP','VAR_POP','BIT_AND','BIT_OR','BIT_XOR','GROUP_CONCAT','PERCENTILE');
 
 	 SET @debug=v_agg_set;
         

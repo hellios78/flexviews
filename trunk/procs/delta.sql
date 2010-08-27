@@ -146,29 +146,37 @@ ELSE -- this mview has aggregates
      AND mview_expression = '*'
    LIMIT 1; -- use limit just in case there is more than one count(*), though why that would be is beyond me...
 
+  IF v_cnt_column IS NULL then 
+    call flexviews.signal('NO COUNT(*) found on materialized view');
+  END IF;
+
   IF flexviews.get_delta_aliases(v_mview_id, '', TRUE) != "" THEN
     SET v_sql = CONCAT('DELETE ', v_delta_table, '.*, ', v_mview_schema, '.', v_mview_name, '.* ',
                        '  FROM ',v_delta_table,
                        '  JOIN ', v_mview_schema, '.', v_mview_name,
                        ' USING(', flexviews.get_delta_aliases(v_mview_id, '', TRUE), ')',
                        ' WHERE ', v_mview_name, '.', v_cnt_column, ' + ', v_delta_table, '.',v_cnt_column, '=0');
+
   ELSE
     SET v_sql = CONCAT('DELETE ', v_delta_table, '.*, ', v_mview_schema, '.', v_mview_name, '.* ',
                        '  FROM ',v_delta_table,
                        '      ,', v_mview_schema, '.', v_mview_name,
                        ' WHERE ', v_mview_name, '.', v_cnt_column, ' + ', v_delta_table, '.',v_cnt_column, '=0');
   END IF;
+
   CALL flexviews.rlog(v_sql);
   SET @v_sql = v_sql;
   PREPARE delete_stmt FROM @v_sql;
   EXECUTE delete_stmt;
   DEALLOCATE PREPARE delete_stmt;
 
+
   SET v_sql = CONCAT('SELECT ', get_delta_aliases(v_mview_id, '', FALSE), ' ',
                      '  FROM ', v_delta_table,
                      ' WHERE uow_id > ', v_refreshed_to_uow_id,
                      '   AND uow_id <= ', v_until_uow_id, 
                      '   AND dml_type IS NOT NULL ');
+
   SET v_sql = get_insert(v_mview_id, v_sql);
   CALL flexviews.rlog(v_sql);
   SET @v_sql = v_sql;
@@ -293,8 +301,9 @@ END IF;
 
 
 SET v_select_clause = flexviews.get_delta_select(v_mview_id, v_method, v_mview_table_id);
+
 SET @delta_select = v_select_clause;
-SET v_select_clause = CONCAT('SELECT (', v_mview_table_alias, '.dml_type * ', v_method, ') as dml_type,', flexviews.get_delta_least_uowid(v_depth), ' as uow_id, ', v_select_clause);
+SET v_select_clause = CONCAT('SELECT (', v_mview_table_alias, '.dml_type * ', v_method, ') as dml_type,', flexviews.get_delta_least_uowid(v_depth), ' as uow_id, NULL as mview$pk ', IF(v_select_clause != '', concat(',', v_select_clause), ''));
 
 
 SET v_from_clause = flexviews.get_delta_from(v_depth);
@@ -751,7 +760,7 @@ SELECT mview_expr_type,
        mview_alias
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
-   AND m.mview_expr_type in ( 'AVG','COLUMN','GROUP','SUM','COUNT','MIN','MAX','COUNT_DISTINCT','STDDEV','VAR_POP' )
+   AND m.mview_expr_type in ('COUNT','GROUP','SUM','COLUMN','AVG','MIN','MAX','COUNT_DISTINCT', 'STDDEV_POP','VAR_POP', 'STDDEV_SAMP','VAR_SAMP','GROUP_CONCAT','BIT_AND','BIT_OR','BIT_XOR','PERCENTILE')
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
@@ -1012,7 +1021,7 @@ IF flexviews.has_aggregates(v_mview_id) = 1 THEN
    
    -- add COUNT(*) to aggregate tables if the user forgot
    -- we can't delete from the mview otherwise
-   IF v_has_count_star != 0 THEN
+   IF v_has_count_star = 0 THEN
      CALL flexviews.add_expr(v_mview_id, 'COUNT', '*', 'CNT');
    END IF;
 
@@ -1140,7 +1149,7 @@ SELECT mview_expr_type,
        mview_alias
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
-   AND m.mview_expr_type in ( 'COLUMN', 'GROUP', 'MIN','MAX','COUNT_DISTINCT', 'STDDEV','VAR_POP' )
+   AND m.mview_expr_type in ( 'COLUMN', 'GROUP', 'MIN','MAX','COUNT_DISTINCT', 'STDDEV_SAMP','STDDEV_POP','VAR_POP','VAR_SAMP','BIT_AND','BIT_OR','BIT_XOR','GROUP_CONCAT', 'PERCENTILE' )
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
@@ -1159,6 +1168,7 @@ selectLoop: LOOP
   END IF;    
 
   SET v_mview_expression := CONCAT('(`', v_alias, '`.`', v_mview_alias, '`)'); 
+
   IF v_mview_expr_type != 'GROUP' AND v_mview_expr_type != 'COLUMN' THEN
     IF v_mview_expr_type = 'COUNT_DISTINCT' THEN
       SET v_mview_expression := CONCAT('COUNT(DISTINCT ', v_mview_expression,')');
@@ -1175,7 +1185,7 @@ selectLoop: LOOP
 
 END LOOP;  
 
-RETURN v_select_list;
+RETURN CONCAT('NULL as mview$pk,',v_select_list);
 END ;;
 
 

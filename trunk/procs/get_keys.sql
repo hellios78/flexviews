@@ -29,11 +29,14 @@ BEGIN
   DECLARE v_mview_alias TEXT;
   DECLARE v_key_list TEXT default '';
   DECLARE v_mview_refresh_type TEXT;
+  DECLARE v_parent_mview_id INT;
 
   DECLARE cur_expr CURSOR FOR
   SELECT mview_expression, 
-         mview_alias
+         mview_alias, 
+         parent_mview_id
     FROM flexviews.mview_expression 
+    JOIN flexviews.mview USING (mview_id)
    WHERE mview_expr_type = v_mview_expr_type 
      AND mview_id = v_mview_id
    ORDER BY mview_expr_order;
@@ -48,7 +51,8 @@ BEGIN
   exprLoop: LOOP
     FETCH cur_expr INTO 
       v_mview_expression,
-      v_mview_alias;
+      v_mview_alias,
+      v_parent_mview_id;
 
     IF v_done THEN
       CLOSE cur_expr;
@@ -56,8 +60,9 @@ BEGIN
     END IF;
   END LOOP;
 
-  IF v_mview_expression IS NOT NULL THEN
-    SET v_key_list = CONCAT('PRIMARY KEY ', v_mview_alias, '(', v_mview_expression, ')');
+  -- if this is a child view OR a PK has been explicitly defined
+  IF v_mview_expression IS NOT NULL  THEN
+        SET v_key_list = CONCAT('PRIMARY KEY ', v_mview_alias, '(', v_mview_expression, ')');
   ELSE
     -- NO PRIMARY KEY DEFINED, WE NEED TO SELECT ONE FOR THE USER
     SELECT mview_refresh_type 
@@ -84,7 +89,8 @@ BEGIN
     exprLoop: LOOP
       FETCH cur_expr INTO
         v_mview_expression,
-        v_mview_alias;
+        v_mview_alias,
+      v_parent_mview_id;
 
       IF v_done THEN 
          CLOSE cur_expr;
@@ -99,7 +105,7 @@ BEGIN
 
     IF v_key_list != '' THEN
       IF v_mview_expr_type = 'GROUP' THEN
-        SET v_key_list = CONCAT('PRIMARY KEY (', v_key_list, ')');
+        SET v_key_list = CONCAT('mview$pk bigint auto_increment primary key,','UNIQUE KEY (', v_key_list, ')');
       ELSE
         SET v_key_list = CONCAT('KEY (', v_key_list, ')');
       END IF;
@@ -113,7 +119,8 @@ BEGIN
   exprLoop: LOOP
     FETCH cur_expr INTO
       v_mview_expression,
-      v_mview_alias;
+      v_mview_alias,
+      v_parent_mview_id;
     
     IF v_done THEN
        CLOSE cur_expr;
@@ -124,6 +131,27 @@ BEGIN
       SET v_key_list = CONCAT(v_key_list, ',');
     END IF;
     SET v_key_list = CONCAT(v_key_list, 'KEY ', v_mview_alias, '(', v_mview_expression, ')');
+  END LOOP;
+
+  SET v_mview_expr_type = 'UNIQUE';
+  SET v_done=FALSE;
+  OPEN cur_expr;
+
+  exprLoop: LOOP
+    FETCH cur_expr INTO
+      v_mview_expression,
+      v_mview_alias,
+      v_parent_mview_id;
+    
+    IF v_done THEN
+       CLOSE cur_expr;
+       LEAVE exprLoop;
+    END IF;
+
+    IF v_key_list != '' THEN
+      SET v_key_list = CONCAT(v_key_list, ',');
+    END IF;
+    SET v_key_list = CONCAT(v_key_list, 'UNIQUE ', v_mview_alias, '(', v_mview_expression, ')');
   END LOOP;
 
   RETURN v_key_list;

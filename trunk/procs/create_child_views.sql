@@ -29,7 +29,7 @@ BEGIN
     INTO v_needs_dependent_view
     FROM flexviews.mview_expression
    WHERE mview_id = v_mview_id
-     AND mview_expr_type in ('MIN','MAX','COUNT_DISTINCT', 'STDDEV','VAR_POP');
+     AND mview_expr_type in ('PERCENTILE','MIN','MAX','COUNT_DISTINCT', 'STDDEV_POP','VAR_POP', 'STDDEV_SAMP','VAR_SAMP','GROUP_CONCAT','BIT_AND','BIT_OR','BIT_XOR');
 
    -- Destroy any existing child materialization
    SET v_new_mview_id := flexviews.get_id(flexviews.get_setting('mvlog_db'), concat('mv$', v_mview_id));
@@ -67,17 +67,19 @@ BEGIN
       (mview_expression_id, mview_id, mview_expr_type, mview_expression, mview_alias, mview_expr_order)
       SELECT NULL,
 	     v_new_mview_id,
-             if(mview_expr_type not in ('MIN','MAX','COUNT_DISTINCT','STDDEV','VAR_POP'), mview_expr_type, 'GROUP'),
+             if(mview_expr_type not in ('PERCENTILE','MIN','MAX','COUNT_DISTINCT','STDDEV_POP','STDDEV_SAMP','VAR_POP','VAR_SAMP','BIT_AND','BIT_OR','BIT_XOR','GROUP_CONCAT'), mview_expr_type, 'GROUP'),
              mview_expression,
              mview_alias,         
              mview_expr_order
         FROM flexviews.mview_expression
        WHERE mview_id = v_mview_id
-         AND mview_expr_type in ('GROUP','WHERE','MIN','MAX','COUNT_DISTINCT', 'STDDEV','VAR_POP');
+         AND mview_expr_type in ('GROUP','WHERE','PERCENTILE','MIN','MAX','COUNT_DISTINCT', 'STDDEV_POP','STDDEV_SAMP','VAR_SAMP','VAR_POP','BIT_AND','BIT_OR','BIT_XOR','GROUP_CONCAT');
 
 
        -- Add a COUNT(*) as `CNT` since it would be added automatically anyway
        CALL flexviews.add_expr(v_new_mview_id, 'COUNT', '*', 'CNT');
+
+       CALL flexviews.add_expr(v_new_mview_id, 'UNIQUE', flexviews.get_delta_aliases(v_new_mview_id,'',TRUE), 'UK');
 
        -- Build the new view (this could be recursive...)
        SET max_sp_recursion_depth=999;
