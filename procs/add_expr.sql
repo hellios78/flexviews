@@ -31,7 +31,7 @@ DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
  *   This adds the specified expression to the materialized view. If using aggregate functions, non-aggregated columns in the SELECT clause are GROUP expressions, otherwise, SELECT expressions are COLUMN expressions. Column references within an expression (regardless of type) must be fully qualified with the TABLE_ALIAS specified in flexviews.ADD_TABLE(). WHERE expressions are added to the WHERE clause of the view. The PRIMARY and KEY expressions represent keys on the materialized view table. Note that PRIMARY and KEY expressions do not reference base table columns, but instead you must specify one or more EXPR_ALIAS(es) previously defined.
  * INPUTS
  *   * v_mview_id -- The materialized view id (see flexviews.get_id)
- *   * v_expr_type -- GROUP|COLUMN|SUM|COUNT|MIN|MAX|AVG|COUNT_DISTINCT|PRIMARY|KEY|STDDEV|VAR_POP
+ *   * v_expr_type -- GROUP|BIT_AND|BIT_OR|BIT_XOR|COLUMN|SUM|COUNT|MIN|MAX|AVG|COUNT_DISTINCT|PRIMARY|KEY|PERCENTILE|STDDEV_POP|STDDEV_SAMP|VAR_SAMP|VAR_POP
  *   * v_expr -- The expression to add.  
  *      Any columns in the expression must be prefixed with a table alias created with flexviews.add_table.  
  *      When the PRIMARY or KEY expression types are used, the user must specify one more more aliases to
@@ -48,13 +48,20 @@ DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
  *   |html </tr><tr><td>COUNT<td>Count rows or expressions
  *   |html </tr><tr><td>SUM<td>SUM adds the value of each expression.  SUM(distinct) is not yet supported.
  *   |html </tr><tr><td>MIN<td>MIN (uses auxilliary view)
- *   |html </tr><tr><td>MAX<td>MAX support  (uses auxilliary view)
- *   |html </tr><tr><td>AVG<td>AVG support  (adds SUM and COUNT expressions automatically)
- *   |html </tr><tr><td>COUNT_DISTINCT<td>Experimental COUNT(DISTINCT) support (uses auxilliary view)
- *   |html </tr><tr><td>STDDEV<td>Experimental STDDEV support (uses auxilliary view)
- *   |html </tr><tr><td>VAR_POP<td>Experimental VAR_POP support (uses auxilliary view)
+ *   |html </tr><tr><td>MAX<td>MAX (uses auxilliary view)
+ *   |html </tr><tr><td>AVG<td>AVG (adds SUM and COUNT expressions automatically)
+ *   |html </tr><tr><td>COUNT_DISTINCT<td>COUNT(DISTINCT) (uses auxilliary view)
+ *   |html </tr><tr><td>STDDEV_POP<td>Standard deviation population(uses auxilliary view)
+ *   |html </tr><tr><td>STDDEV_SAMP<td>Standard deviation sample(uses auxilliary view)
+ *   |html </tr><tr><td>VAR_POP<td>Variance population (uses auxilliary view)
+ *   |html </tr><tr><td>VAR_SAMP<td>Variance sample (uses auxilliary view)
+ *   |html </tr><tr><td>GROUP_CONCAT<td>Group concatenation - NOT YET SUPPORTED (uses auxilliary view)
+ *   |html </tr><tr><td>BIT_AND<td>BIT_AND(uses auxilliary view)
+ *   |html </tr><tr><td>BIT_OR<td>BIT_OR(uses auxilliary view)
+ *   |html </tr><tr><td>BIT_XOR<td>BIT_XOR(uses auxilliary view)
  *   |html </tr><tr><td>PRIMARY<td>Adds a primary key to the view.  Specify column aliases in v_expr.  
  *   |html </tr><tr><td>KEY<td>Adds an index to the view.  Specify column aliases in v_expr.
+ *   |html </tr><tr><td>PERCENTILE_##<td>Adds a percentile calculation to the view. 
  *   |html </tr></table>
  *   
  
@@ -68,6 +75,8 @@ DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
  *     call flexviews.add_expr(@mv_id, 'GROUP', 'an_alias.c1', 'c1');
  *     call flexviews.add_expr(@mv_id, 'SUM', 'an_alias.c2', 'sum_c2');
  *     call flexviews.add_expr(@mv_id, 'PRIMARY', 'c1', 'pk');
+ *     call flexviews.add_expr(@mv_id, 'KEY', 'c1,sum_c2', 'key2');
+ *     call flexviews.add_expr(@mv_id, 'PERCENTILE_95', 'c1', 'pct_95');
 ******
 */
 
@@ -81,6 +90,7 @@ BEGIN
   DECLARE v_error BOOLEAN default false;
   DECLARE v_mview_enabled BOOLEAN default NULL;
   DECLARE v_mview_refresh_type TEXT;
+  DECLARE v_percentile INT;
 
   DECLARE v_mview_expr_order INT;
   DECLARE CONTINUE HANDLER FOR SQLSTATE '01000' SET v_error = true;
@@ -96,6 +106,21 @@ BEGIN
   ELSEIF v_mview_enabled = 1 AND v_mview_refresh_type = 'INCREMENTAL'  THEN
     SELECT 'FAILURE: The specified materialized view is enabled.  INCREMENTAL refresh materialized views may not be modified after they have been enabled.' as message;
   ELSE
+
+    SET v_percentile := NULL;
+
+    IF v_mview_expr_type like 'PERCENTILE%' THEN
+      SET v_percentile = RIGHT(v_mview_expr_type, 2);
+      IF SUBSTR(v_percentile, 1, 1) = "_" THEN
+        SET v_percentile := RIGHT(v_percentile, 1);
+      END IF;
+
+      SET v_mview_expr_type := 'PERCENTILE';
+
+      select 'PERCENTILE:', v_percentile;
+
+    END IF;
+
     SELECT IFNULL(max(mview_expr_order), 0)+1
       INTO v_mview_expr_order
       FROM flexviews.mview_expression
@@ -106,13 +131,15 @@ BEGIN
          mview_expr_type,
          mview_expression,
          mview_alias,
-         mview_expr_order )
+         mview_expr_order, 
+         percentile )
       VALUES
       (  v_mview_id,
          v_mview_expr_type,
          v_mview_expression,
          v_mview_alias,
-         v_mview_expr_order );
+         v_mview_expr_order, 
+         v_percentile );
      if (v_error != false) then
        select concat('Invalid expression type: ', v_mview_expr_type,'  Available expression types: ', column_type) as 'error'
          from information_schema.columns 

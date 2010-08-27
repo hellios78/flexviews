@@ -51,10 +51,11 @@ CREATE TABLE `mview_expression` (
   `mview_expression_id` int(11) NOT NULL auto_increment,
   `mview_id` int(11) default NULL,
 
-  `mview_expr_type` enum('GROUP','SUM','AVG','COUNT','MIN','MAX','WHERE','PRIMARY','KEY','COLUMN','COUNT_DISTINCT','STDDEV','VAR_POP') DEFAULT 'GROUP',
+  `mview_expr_type` enum('GROUP','SUM','AVG','COUNT','MIN','MAX','WHERE','PRIMARY','KEY','COLUMN','COUNT_DISTINCT','STDDEV_POP','VAR_POP','STDDEV_SAMP','VAR_SAMP','BIT_AND','BIT_OR','BIT_XOR', 'PERCENTILE','UNIQUE') DEFAULT 'GROUP',
   `mview_expression` varchar(1000),
   `mview_alias` varchar(100) default NULL,
   `mview_expr_order` int(11) default '999',
+  `percentile` int default null,
   PRIMARY KEY  (`mview_expression_id`),
   UNIQUE KEY `mview_id` (`mview_id`,`mview_alias`),
   KEY `mview_id_2` (`mview_id`,`mview_expr_order`)

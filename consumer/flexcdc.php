@@ -49,7 +49,7 @@ EOREGEX
 	# Settings to enable bulk import
 	private $inserts = array();
 	private $deletes = array();
-	private $bulk_insert = false;
+	private $bulk_insert = true;
   	
 	private $mvlogDB = NULL;
 	public	$mvlogList = array();
@@ -261,7 +261,7 @@ EOREGEX
 			
 				if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;
 				$execCmdLine = sprintf("%s --base64-output=decode-rows -v -R --start-position=%d --stop-position=%d %s", $this->cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
-				#echo  "-- $execCmdLine\n";
+				echo  "-- $execCmdLine\n";
 				$proc = popen($execCmdLine, "r");
 				$this->binlogPosition = $row['exec_master_log_pos'];
 				$this->logName = $row['master_log_file'];
@@ -424,6 +424,9 @@ EOREGEX
 	function delete_row() {
 		if ( $this->bulk_insert ) {
 			$this->deletes[] = $this->row;
+			if(count($this->inserts) >= 10000) {
+				$this->process_rows();	
+			}
 		} else {
 			$row=array();
 			foreach($this->row as $col) {
@@ -443,6 +446,9 @@ EOREGEX
 	function insert_row() {
 		if ( $this->bulk_insert ) {
 			$this->inserts[] = $this->row;
+			if(count($this->deletes) >= 10000) {
+				$this->process_rows();	
+			}
 		} else {
 			$row=array();
 			foreach($this->row as $col) {
@@ -497,6 +503,11 @@ EOREGEX
 		if($valList) {
 			mysql_query($sql . $valList, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 		}
+
+		unset($this->inserts);
+		unset($this->deletes);
+		$this->inserts = array();
+		$this->deletes = array();
 
 	}
 

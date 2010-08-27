@@ -25,18 +25,21 @@ CREATE DEFINER=flexviews@localhost FUNCTION flexviews.`get_select`(  v_mview_id 
 BEGIN  
 DECLARE v_done boolean DEFAULT FALSE;  
 DECLARE v_mview_expr_type varchar(100);  
-DECLARE v_mview_expression varchar(100); 
+DECLARE v_mview_expression TEXT; 
 DECLARE v_mview_alias varchar(100);  
 DECLARE v_select_list TEXT default NULL;  
 DECLARE v_mview_alias_prefixed TEXT; 
+DECLARE v_percentile INT;
+
 DECLARE cur_select CURSOR 
 FOR  
 SELECT mview_expr_type, 
        mview_expression, 
-       mview_alias
+       mview_alias,
+       percentile
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
-   AND m.mview_expr_type in ('COLUMN','COUNT_DISTINCT','MIN','MAX', 'AVG', 'SUM', 'GROUP','COUNT','STDDEV','VAR_POP')
+   AND m.mview_expr_type in ('COLUMN','COUNT_DISTINCT','MIN','MAX', 'AVG', 'SUM', 'GROUP','COUNT','PERCENTILE','STDDEV_POP','STDDEV_SAMP','VAR_POP','VAR_SAMP','BIT_AND','BIT_OR','BIT_XOR','GROUP_CONCAT')
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
@@ -48,7 +51,8 @@ selectLoop: LOOP
   FETCH cur_select 
    INTO v_mview_expr_type,
         v_mview_expression,
-        v_mview_alias;
+        v_mview_alias, 
+        v_percentile;
   
   IF v_done THEN      
     CLOSE cur_select;      
@@ -67,8 +71,11 @@ selectLoop: LOOP
     SET v_mview_alias_prefixed = CONCAT(v_prefix, '.', v_mview_alias);
   END IF;
 
-  SET v_mview_expression = CONCAT('(', v_mview_expression, ')');
- 
+--  IF v_mode = 'LOG' THEN
+--    SET v_mview_expression = CONCAT('(IFNULL(', IF(v_mview_expression = '*', 1, v_mview_expression), ', 0))');
+--  ELSE 
+    SET v_mview_expression = CONCAT('(', v_mview_expression, ')');
+--  END IF;
   IF v_mode = 'CREATE' THEN      
       IF v_mview_expr_type = 'GROUP' OR v_mview_expr_type = 'COLUMN' THEN
         SET v_mview_expr_type = '';
@@ -77,9 +84,17 @@ selectLoop: LOOP
 	  SET v_mview_expr_type = 'COUNT(DISTINCT ';
           SET v_mview_expression = CONCAT(v_mview_expression, ')');
         END IF;
+
+        -- percentile calculation is complex, so its construction is in its own function
+        IF v_mview_expr_type = 'PERCENTILE' THEN
+          SET v_mview_expr_type := ''; 
+          SET v_mview_expression := CONCAT( '(', flexviews.get_percentile(v_mview_expression, v_percentile), ')' );
+        END IF;
       END IF;
 
       SET v_select_list = CONCAT(v_select_list, v_mview_expr_type, v_mview_expression, ' as ', v_mview_alias);      
+
+      -- ADD sum and count for AVG expressions
       IF v_mview_expr_type = 'AVG' THEN        
         SET v_select_list = CONCAT(v_select_list, ',SUM', v_mview_expression, ' as ', v_mview_alias, '_sum' );        
         SET v_select_list = CONCAT(v_select_list, ',COUNT', v_mview_expression, ' as ', v_mview_alias, '_cnt' );      
@@ -106,18 +121,31 @@ selectLoop: LOOP
                 END IF;   
         END IF;    
 
+
         IF v_mview_expr_type   = 'GROUP' OR
            v_mview_expr_type   = 'COLUMN' OR
            v_mview_expr_type   = 'MIN' OR
            v_mview_expr_type   = 'MAX' OR 
            v_mview_expr_type   = 'SUM' OR
            v_mview_expr_type   = 'COUNT_DISTINCT' OR
-	   v_mview_expr_type   = 'STDDEV' OR
-           v_mview_expr_type   = 'VAR_POP'  THEN
+	   v_mview_expr_type   = 'STDDEV_POP' OR
+	   v_mview_expr_type   = 'STDDEV_SAMP' OR
+           v_mview_expr_type   = 'VAR_POP' OR
+           v_mview_expr_type   = 'VAR_SAMP' OR
+           v_mview_expr_type   = 'BIT_AND' OR
+           v_mview_expr_type   = 'BIT_OR' OR
+           v_mview_expr_type   = 'BIT_XOR' OR
+           v_mview_expr_type   = 'GROUP_CONCAT' THEN
 
                 IF v_mview_expr_type = 'GROUP' OR v_mview_expr_type = 'COLUMN' THEN
                   SET v_mview_expr_type = '';
                 END IF;
+ 
+                IF v_mview_expr_type = 'PERCENTILE' THEN
+                  SET v_mview_expr_type := '';
+                  SET v_mview_expression := CONCAT( '(', flexviews.get_percentile(v_mview_expression, v_percentile), ')' );
+                END IF;
+
 
                 IF v_mode = 'UNION' THEN        
                         SET v_select_list = CONCAT(v_select_list, v_mview_expr_type, '(', v_mview_alias, ') as ', v_mview_alias);        
@@ -125,7 +153,17 @@ selectLoop: LOOP
                 END IF;      
                 IF v_mode = 'LOG' THEN        
                         IF v_mview_expr_type != '' THEN
-                          IF v_mview_expr_type != 'MIN' AND v_mview_expr_type != 'MAX' AND v_mview_expr_type != 'STDDEV' AND v_mview_expr_type != 'VAR_POP' THEN
+                          IF v_mview_expr_type != 'MIN' AND
+                             v_mview_expr_type != 'MAX' AND
+                             v_mview_expr_type != 'STDDEV_POP' AND 
+                             v_mview_expr_type != 'STDDEV_SAMP' AND
+                             v_mview_expr_type != 'VAR_POP' AND 
+                             v_mview_expr_type != 'VAR_SAMP' AND 
+                             v_mview_expr_type != 'BIT_AND' AND 
+                             v_mview_expr_type != 'BIT_OR' AND 
+                             v_mview_expr_type != 'BIT_XOR' AND 
+                             v_mview_expr_type != 'PERCENTILE' AND
+                             v_mview_expr_type != 'GROUP_CONCAT' THEN
                             SET v_select_list = CONCAT(v_select_list, v_mview_expr_type, '(mview_type * ', v_mview_expression,') as ', v_mview_alias);         
                           ELSE
                             SET v_select_list = CONCAT(v_select_list, ' 0 as ', v_mview_alias);  
@@ -160,7 +198,13 @@ selectLoop: LOOP
     END IF;
     SET v_select_list = CONCAT(v_select_list, ' ');   
 END LOOP;  
-RETURN CONCAT('SELECT ',v_select_list);
+
+-- IF v_mode = 'CREATE' THEN
+  RETURN CONCAT('SELECT NULL as mview$pk, ',v_select_list);
+-- else
+--  RETURN CONCAT('SELECT , ',v_select_list);
+
+-- end if;
 END ;;
 
 DELIMITER ;
