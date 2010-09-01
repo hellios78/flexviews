@@ -150,6 +150,8 @@ ELSE -- this mview has aggregates
     call flexviews.signal('NO COUNT(*) found on materialized view');
   END IF;
 
+
+  -- FIXME: There is a bug here that can result in zero count tuples still remaining in the view
   IF flexviews.get_delta_aliases(v_mview_id, '', TRUE) != "" THEN
     SET v_sql = CONCAT('DELETE ', v_delta_table, '.*, ', v_mview_schema, '.', v_mview_name, '.* ',
                        '  FROM ',v_delta_table,
@@ -186,8 +188,18 @@ ELSE -- this mview has aggregates
 
 END IF;
 
-DROP TEMPORARY TABLE IF EXISTS deletes;
--- END PROCESSING DELETES --
+  DROP TEMPORARY TABLE IF EXISTS deletes;
+  -- END PROCESSING DELETES --
+
+IF v_cnt_column is not null THEN
+
+  set v_sql := CONCAT('DELETE from ', v_mview_schema, '.', v_mview_name, ' WHERE ', v_cnt_column, ' = 0');
+  set @v_sql = v_sql;
+  prepare delete_stmt from @v_sql;
+  execute delete_stmt;
+  deallocate prepare delete_stmt;
+
+END IF;
 
   -- CLEAN UP THE DELTA LOG
   SET v_sql = CONCAT('DELETE FROM ', v_delta_table, ' WHERE uow_id <= ', v_until_uow_id);
@@ -195,6 +207,28 @@ DROP TEMPORARY TABLE IF EXISTS deletes;
   PREPARE delete_stmt FROM @v_sql;
   EXECUTE delete_stmt;
   DEALLOCATE PREPARE delete_stmt;
+
+  SET v_sql = CONCAT('SELECT COUNT(*) INTO @mv_count FROM ', v_mview_schema, '.', v_mview_name);
+  SET @v_sql = v_sql;
+  PREPARE count_stmt FROM @v_sql;
+  EXECUTE count_stmt;
+  DEALLOCATE PREPARE count_stmt;
+
+  SELECT count(*)
+  INTO @has_group
+  FROM flexviews.mview_expression
+ WHERE mview_id = v_mview_id
+   AND mview_expr_type in ('GROUP');
+
+  IF @has_group = 0 AND @mv_count = 0 AND IFNULL(v_cnt_column,'') != '' THEN
+    SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, ' (', v_cnt_column, ') VALUES (0)');
+    SET @v_sql = v_sql;
+    PREPARE fixup_count FROM @v_sql;
+    EXECUTE fixup_count;
+    DEALLOCATE PREPARE fixup_count;
+  END IF;
+
+
 
   -- UPDATE TABLE TO INDICATE WE HAVE REFRESHED--
   UPDATE flexviews.mview
@@ -298,7 +332,6 @@ SET v_group_clause = flexviews.get_delta_groupby(v_mview_id);
 IF v_group_clause != '' THEN
   SET v_group_clause = CONCAT(' GROUP BY ', v_group_clause);
 END IF;
-
 
 SET v_select_clause = flexviews.get_delta_select(v_mview_id, v_method, v_mview_table_id);
 
