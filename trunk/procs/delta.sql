@@ -63,6 +63,7 @@ IF v_until_uow_id IS NULL OR v_until_uow_id = 0 THEN
 END IF;
 
 IF NOT flexviews.has_aggregates(v_mview_id) THEN
+
   -- PROCESS INSERTS --
   IF flexviews.get_delta_aliases(v_mview_id, '', FALSE) != '' THEN
     SET v_sql = CONCAT('INSERT INTO ',
@@ -211,6 +212,8 @@ END IF;
   EXECUTE delete_stmt;
   DEALLOCATE PREPARE delete_stmt;
 
+  
+  -- Fix aggregate tables without group by attributes when they go to zero rows
   SET v_sql = CONCAT('SELECT COUNT(*) INTO @mv_count FROM ', v_mview_schema, '.', v_mview_name);
   SET @v_sql = v_sql;
   PREPARE count_stmt FROM @v_sql;
@@ -835,7 +838,7 @@ selectLoop: LOOP
     ELSE
       SET v_mview_expression  = CONCAT('IF(',v_mview_expression,' IS NULL,0,', v_dml_type);
     END IF;
-    SET v_mview_expression = CONCAT('SUM(', v_mview_expression, ')');
+    SET v_mview_expression = CONCAT('IFNULL(SUM(', v_mview_expression, '),0)');
   ELSEIF v_mview_expr_type = 'SUM' THEN
     SET v_mview_expression = CONCAT('SUM(',v_dml_type, ' * ', v_mview_expression, ')');
   ELSE
