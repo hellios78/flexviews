@@ -64,19 +64,21 @@ END IF;
 
 IF NOT flexviews.has_aggregates(v_mview_id) THEN
   -- PROCESS INSERTS --
-  SET v_sql = CONCAT('INSERT INTO ',
-      v_mview_schema, '.', v_mview_name,
-      ' SELECT ', flexviews.get_delta_aliases(v_mview_id,'',FALSE), 
-      '   FROM ', v_delta_table, 
-      ' WHERE dml_type = 1 AND uow_id > ', v_refreshed_to_uow_id,
-      '   AND uow_id <= ', v_until_uow_id);
+  IF flexviews.get_delta_aliases(v_mview_id, '', FALSE) != '' THEN
+    SET v_sql = CONCAT('INSERT INTO ',
+        v_mview_schema, '.', v_mview_name,
+        ' SELECT ', flexviews.get_delta_aliases(v_mview_id,'',FALSE), 
+        '   FROM ', v_delta_table, 
+        ' WHERE dml_type = 1 AND uow_id > ', v_refreshed_to_uow_id,
+        '   AND uow_id <= ', v_until_uow_id);
 
-  call flexviews.rlog (v_sql);
+    call flexviews.rlog (v_sql);
 
-  SET @v_sql = v_sql;
-  PREPARE insert_stmt from @v_sql;
-  EXECUTE insert_stmt; 
-  DEALLOCATE PREPARE insert_stmt;
+    SET @v_sql = v_sql;
+    PREPARE insert_stmt from @v_sql;
+    EXECUTE insert_stmt; 
+    DEALLOCATE PREPARE insert_stmt;
+  END IF;
   -- DONE WITH INSERTS --
 
   -- DELETE TUPLES FROM THE MV 
@@ -99,7 +101,7 @@ IF NOT flexviews.has_aggregates(v_mview_id) THEN
     INTO v_row_count
     FROM deletes;
 
-  IF v_row_count > 0 AND v_row_count IS NOT NULL THEN
+  IF flexviews.get_delta_aliases(v_mview_id, '', FALSE) != '' AND v_row_count > 0 AND v_row_count IS NOT NULL THEN
 
     -- MySQL does not support JOIN w/ LIMIT in a DELETE 
     -- statement.  We are going to work around it with
@@ -121,6 +123,7 @@ IF NOT flexviews.has_aggregates(v_mview_id) THEN
       -- in the MV.
       SET @oneRow = 0; 
       SET @v_cur_row = v_cur_row;
+
       SET v_sql = CONCAT('DELETE ', v_mview_schema, '.', v_mview_name, '.* FROM\n ',
         v_mview_schema, '.', v_mview_name,
         ' NATURAL JOIN deletes\n ',
@@ -349,6 +352,7 @@ IF v_group_clause != "" THEN
                     v_sql, ' AND (', v_mview_table_alias, '.dml_type * ', v_method, ' = -1)', v_group_clause);
 
   SET v_sql = CONCAT('INSERT INTO ', v_delta_table, '  SELECT * from (', v_sql, ' ) x_select_ where x_select_.dml_type is not null ');
+
 ELSE
   SET v_sql = CONCAT('INSERT INTO ', v_delta_table, ' ', v_sql);
 END IF;
@@ -971,6 +975,8 @@ SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, '\n',
 'SELECT * FROM (', v_select_stmt ,') x_select_ \n',
 "ON DUPLICATE KEY UPDATE\n");
 
+SET @HERE=1;
+
 OPEN cur_agg;
 exprLoop: LOOP
   FETCH cur_agg 
@@ -995,6 +1001,8 @@ exprLoop: LOOP
     SET v_set_clause = CONCAT(v_set_clause, '`', v_mview_alias, '` = ', v_mview_name, '.`',v_mview_alias, '_sum` / ', v_mview_name, '.`', v_mview_alias, '_cnt`\n');
   END IF;
 END LOOP;
+
+set @get_insert := CONCAT(v_sql, v_set_clause);
 
 RETURN CONCAT(v_sql, v_set_clause);
 END;;
