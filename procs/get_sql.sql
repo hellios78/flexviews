@@ -60,7 +60,13 @@ BEGIN
   SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, '\nJOIN', ''));
   SET v_sql = CONCAT(v_sql, flexviews.get_where(v_mview_id));
 
-  SET v_sql = CONCAT(v_sql, IF(flexviews.has_aggregates(v_mview_id) = true, '\nGROUP BY ', ''), flexviews.get_delta_groupby(v_mview_id), ' ');
+  SELECT count(*) 
+    INTO @has_group
+    FROM mview_expression
+   WHERE mview_id = v_mview_id
+     AND mview_expr_type = 'GROUP';
+
+  SET v_sql = CONCAT(v_sql, IF(flexviews.has_aggregates(v_mview_id) = true AND @has_group > 0, '\nGROUP BY ', ''), flexviews.get_delta_groupby(v_mview_id), ' ');
 
   RETURN v_sql;
 
