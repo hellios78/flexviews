@@ -67,23 +67,17 @@ DECLARE v_mview_refresh_type TEXT;
 
 DECLARE v_mview_last_refresh DATETIME default NULL;
 DECLARE v_mview_refresh_period INT;
-
 DECLARE v_got_lock TINYINT DEFAULT NULL;
-
 DECLARE v_incremental_hwm BIGINT;
 DECLARE v_refreshed_to_uow_id BIGINT;
 DECLARE v_current_uow_id BIGINT;
-
 DECLARE v_child_mview_id INT DEFAULT NULL;
-
 DECLARE v_sql TEXT DEFAULT '';
-
 DECLARE v_signal_id BIGINT DEFAULT NULL;
-
 DECLARE v_mview_schema TEXT;
 DECLARE v_mview_name TEXT;
-
 DECLARE v_pos INT;
+DECLARE v_using_clause TEXT DEFAULT '';
 
 SET v_mode = UPPER(v_mode);
 
@@ -297,24 +291,33 @@ END IF;
             AND mview_expr_type in('MIN','MAX','COUNT_DISTINCT', 'STDDEV_POP','STDDEV_SAMP','VAR_SAMP','VAR_POP','BIT_AND','BIT_OR','BIT_XOR','GROUP_CONCAT','PERCENTILE');
 
 	 SET @debug=v_agg_set;
-        
+       
+	 SET v_using_clause := flexviews.get_delta_aliases(v_mview_id, '', true); 
+
          IF (LEFT(v_agg_set, -1) = ',') THEN
            SET v_agg_set = LEFT(v_agg_set, LENGTH(v_agg_set)-1);
          END IF;
+
  
-         SET v_sql = CONCAT('UPDATE ', v_mview_schema, '.', v_mview_name, '\n',
-                            '  JOIN (\n', 
-                            'SELECT ', get_child_select(v_mview_id, 'cv'), '\n',
-                            '  FROM ', v_child_mview_name, ' as cv\n', 
-                            '  JOIN ', v_mview_schema, '.', v_mview_name, '_delta as pv \n ', 
-                            ' USING (', get_delta_aliases(v_mview_id, '', true), ')\n',  
-                            
-                            ' GROUP BY ', get_delta_aliases(v_mview_id, 'cv', true), 
-                            ') x_alias \n'
-                            'USING (', get_delta_aliases(v_mview_id, '', true), ')\n',
-                            '   SET ', v_agg_set , '\n'
-                           );
-	 SET @J = v_sql;
+           SET v_sql = CONCAT('UPDATE ', v_mview_schema, '.', v_mview_name, '\n',
+                              '  JOIN (\n', 
+                              'SELECT ', get_child_select(v_mview_id, 'cv'), '\n',
+                              '  FROM ', v_child_mview_name, ' as cv\n', 
+                              '  JOIN ', v_mview_schema, '.', v_mview_name, '_delta as pv \n '); 
+
+	   IF v_using_clause != '' THEN 
+             SET v_sql = CONCAT(v_sql, ' USING (', v_using_clause, ')\n',  
+                              ' GROUP BY ', get_delta_aliases(v_mview_id, 'cv', true)); 
+	   END IF;
+
+           SET v_sql = CONCAT(v_sql, ') x_alias \n');
+
+           IF v_using_clause != '' THEN
+              SET v_sql = CONCAT(v_sql, ' USING (', get_delta_aliases(v_mview_id, '', true), ')\n');
+           END IF;
+           
+           SET v_sql = CONCAT(v_sql,' SET ', v_agg_set , '\n');
+
          SET @v_sql = v_sql;
 
          PREPARE update_stmt from @v_sql;

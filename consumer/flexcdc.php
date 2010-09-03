@@ -261,7 +261,7 @@ EOREGEX
 			
 				if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;
 				$execCmdLine = sprintf("%s --base64-output=decode-rows -v -R --start-position=%d --stop-position=%d %s", $this->cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
-				echo  "-- $execCmdLine\n";
+				#echo  "-- $execCmdLine\n";
 				$proc = popen($execCmdLine, "r");
 				$this->binlogPosition = $row['exec_master_log_pos'];
 				$this->logName = $row['master_log_file'];
