@@ -267,6 +267,10 @@ END IF;
      DECLARE v_child_mview_name TEXT;
      DECLARE v_agg_set TEXT;
 
+      SET @now := UNIX_TIMESTAMP(NOW());
+      CALL flexviews.apply_delta(v_mview_id, v_current_uow_id);
+      SET @compute_time = UNIX_TIMESTAMP(NOW()) - @now;
+
        IF v_child_mview_id IS NOT NULL THEN
        	 CALL flexviews.apply_delta(v_child_mview_id, v_current_uow_id);
 
@@ -303,7 +307,12 @@ END IF;
                               '  JOIN (\n', 
                               'SELECT ', get_child_select(v_mview_id, 'cv'), '\n',
                               '  FROM ', v_child_mview_name, ' as cv\n', 
+
+                              '  JOIN ', v_mview_schema, '.', v_mview_name, ' as pv \n '); 
+/*
+
                               '  JOIN ', v_mview_schema, '.', v_mview_name, '_delta as pv \n '); 
+*/
 
 	   IF v_using_clause != '' THEN 
              SET v_sql = CONCAT(v_sql, ' USING (', v_using_clause, ')\n',  
@@ -320,15 +329,16 @@ END IF;
 
          SET @v_sql = v_sql;
 
+
+	 SET @update = v_sql;
+
          PREPARE update_stmt from @v_sql;
          EXECUTE update_stmt;   
          DEALLOCATE PREPARE update_stmt;
 
-      END IF;
 
-      SET @now := UNIX_TIMESTAMP(NOW());
-      CALL flexviews.apply_delta(v_mview_id, v_current_uow_id);
-      SET @compute_time = UNIX_TIMESTAMP(NOW()) - @now;
+
+      END IF;
 
       UPDATE flexviews.mview
          SET mview_last_refresh = (select commit_time from flexviews.mview_uow where uow_id = v_current_uow_id)
