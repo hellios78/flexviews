@@ -17,5 +17,29 @@
     If not, see <http://www.gnu.org/licenses/>.
 */
 
-\. install_schema.inc
-\. install_procs.inc
+SET SQL_MODE = STRICT_TRANS_TABLES;
+
+CREATE DATABASE IF NOT EXISTS flexviews;
+GRANT USAGE ON *.* TO flexviews@localhost identified by 'CHANGEME';
+
+GRANT/* CREATE, DROP, ALTER, DELETE, INDEX,
+      INSERT, SELECT, UPDATE, TRIGGER, CREATE VIEW,
+      SHOW VIEW, ALTER ROUTINE, CREATE ROUTINE, EXECUTE,
+      CREATE TEMPORARY TABLES, LOCK TABLES
+     */ALL
+   ON flexviews.*
+   TO flexviews@localhost;
+
+-- THIS GIVES THE flexviews USER SELECT ACCESS TO
+-- ALL YOUR TABLES.  THIS MAY NOT BE A GOOD
+-- IDEA.  YOU WILL HAVE TO DECIDE.  IF YOU DON'T
+-- WANT THIS YOU WILL HAVE TO GRANT EXPLICIT SELECT
+-- ACCESS TO THE flexviews USER ON BASE TABLES THAT
+-- YOU WANT TO SELECT FROM FOR MATERIALIZED VIEWS
+GRANT USAGE
+   ON *.*
+   TO flexviews@localhost;
+
+USE flexviews;
+
+\. schema/schema.sql
