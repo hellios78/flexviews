@@ -147,4 +147,3 @@ select the_min from test.mv1;
 
 select min(c2) the_min from test.t1;
 
-select @v_sql;
