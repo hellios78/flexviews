@@ -1,13 +1,24 @@
-Upgrading is a two step process.
+You may only upgrade from 1.5.3b.  
 
-Step 1 involves adding the upgrade stored procedure to the existing Flexviews installation
- * Connect to MySQL as the 'root' user (or any user with SUPER privilege)
- * Source the upgrade.sql file
-   \. upgrade.sql
+Execute upgrade.sql as the root user:
 
-Step 2 involves actually running the upgrade:
- * From the mysql> prompt:
-   CALL flexviews.upgrade();
+mysql -uroot < upgrade.sql
 
+You should see the following:
+======== [cut] =========
 
+Adding new aggregate function types to the flexviews metadata
 
+Update any STDDEV expressions to be STDDEV_POP expression (same result, different name)
+
+Removing ability to add new STDDEV expressions (use STDDEV_POP)
+
+Installing stored procedures
+message
+If you see no errors, then installation was successful.
+
+upgrade done.
+
+======= [/cut] =========
+
+Report any problems to the bug tracker.
