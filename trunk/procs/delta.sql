@@ -157,24 +157,20 @@ ELSE -- this mview has aggregates
 
   -- FIXME: There is a bug here that can result in zero count tuples still remaining in the view
   IF flexviews.get_delta_aliases(v_mview_id, '', TRUE) != "" THEN
-    SET v_sql = CONCAT('DELETE ', v_delta_table, '.*, ', v_mview_schema, '.', v_mview_name, '.* ',
-                       '  FROM ',v_delta_table,
-                       '  JOIN ', v_mview_schema, '.', v_mview_name,
-                       ' USING(', flexviews.get_delta_aliases(v_mview_id, '', TRUE), ')',
-                       ' WHERE ', v_mview_name, '.', v_cnt_column, ' + ', v_delta_table, '.',v_cnt_column, '=0');
+set @nothing = 1;
 
   ELSE
     SET v_sql = CONCAT('DELETE ', v_delta_table, '.*, ', v_mview_schema, '.', v_mview_name, '.* ',
                        '  FROM ',v_delta_table,
                        '      ,', v_mview_schema, '.', v_mview_name,
                        ' WHERE ', v_mview_name, '.', v_cnt_column, ' + ', v_delta_table, '.',v_cnt_column, '=0');
-  END IF;
+  	CALL flexviews.rlog(v_sql);
+  	SET @v_sql = v_sql;
+  	PREPARE delete_stmt FROM @v_sql;
+  	EXECUTE delete_stmt;
+  	DEALLOCATE PREPARE delete_stmt;
 
-  CALL flexviews.rlog(v_sql);
-  SET @v_sql = v_sql;
-  PREPARE delete_stmt FROM @v_sql;
-  EXECUTE delete_stmt;
-  DEALLOCATE PREPARE delete_stmt;
+  END IF;
 
 
   SET v_sql = CONCAT('SELECT ', get_delta_aliases(v_mview_id, '', FALSE), ' ',
@@ -196,6 +192,26 @@ END IF;
   -- END PROCESSING DELETES --
 
 IF v_cnt_column is not null THEN
+ -- FIXME
+
+  IF flexviews.get_delta_aliases(v_mview_id, '', TRUE) != '' THEN
+     SET v_sql = CONCAT('DELETE ', v_mview_schema, '.', v_mview_name, '.*',
+                         '  FROM ', v_mview_schema, '.', v_mview_name,
+                         '  JOIN ( SELECT ', flexviews.get_delta_aliases(v_mview_id, '', TRUE),
+                         '            ,SUM(', v_cnt_column,') _cnt ',
+                         '  FROM ', v_mview_schema, '.', v_mview_name, 
+                         ' GROUP BY ', flexviews.get_delta_aliases(v_mview_id, '', TRUE), 
+                         ' HAVING _cnt <= 0) delta',
+                         ' WHERE ', flexviews.get_delta_join(v_mview_id)
+    );
+
+    set @Z := v_sql;
+    CALL flexviews.rlog(v_sql);
+    SET @v_sql = v_sql;
+    PREPARE delete_stmt FROM @v_sql;
+    EXECUTE delete_stmt;
+    DEALLOCATE PREPARE delete_stmt;
+  END IF;
 
   set v_sql := CONCAT('DELETE from ', v_mview_schema, '.', v_mview_name, ' WHERE ', v_cnt_column, ' = 0');
   set @v_sql = v_sql;
@@ -1232,6 +1248,59 @@ END LOOP;
 RETURN CONCAT('NULL as mview$pk,',v_select_list);
 END ;;
 
+
+DROP FUNCTION IF EXISTS `get_delta_join`;;
+
+CREATE DEFINER=flexviews@localhost FUNCTION `get_delta_join`(  
+v_mview_id INT 
+)
+RETURNS TEXT 
+READS SQL DATA
+BEGIN  
+DECLARE v_done boolean DEFAULT FALSE;  
+DECLARE v_mview_expr_type TEXT;
+DECLARE v_mview_expression TEXT;
+DECLARE v_mview_alias TEXT;
+DECLARE v_select_list TEXT default '';  
+DECLARE v_mview_fqn TEXT DEFAULT '';
+DECLARE cur_select CURSOR 
+FOR  
+SELECT mview_expr_type, 
+       mview_expression, 
+       mview_alias,
+       concat (mview_schema, '.', mview_name) 
+  FROM flexviews.mview_expression m
+  JOIN flexviews.mview USING (mview_id)
+ WHERE m.mview_id = v_mview_id
+   AND m.mview_expr_type = 'GROUP'
+ ORDER BY mview_expr_order;  
+
+DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
+    SET v_done = TRUE;  
+
+OPEN cur_select;  
+
+selectLoop: LOOP    
+  FETCH cur_select 
+   INTO v_mview_expr_type,
+        v_mview_expression,
+        v_mview_alias,
+        v_mview_fqn;
+  
+  IF v_done THEN      
+    CLOSE cur_select;      
+    LEAVE selectLoop;    
+  END IF;    
+ 
+  IF v_select_list != '' THEN      
+    SET v_select_list = CONCAT(v_select_list, ' AND ');    
+  END IF;    
+
+  SET v_select_list = CONCAT(v_select_list, 'IFNULL(', v_mview_fqn ,'.`', v_mview_alias, '`, ":NULL:") = IFNULL(delta.`', v_mview_alias, '`, ":NULL:")' );   
+
+END LOOP;  
+RETURN v_select_list;
+END ;;
 
 DELIMITER ;
 

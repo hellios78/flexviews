@@ -1,11 +1,14 @@
 This directory contains the Flexviews test suite.
 
-It requires
- PHPunit 
+Tests for FlexCDC require:
+ PHPunit  
  MySQLsandbox 3
- 
 
-To run the tests:
+Tests for the Flexviews SQL API and materialized view refresh require:
+A sandbox server
+
+
+To run the FlexCDC tests:
 1) Create and start a MySQL sandbox
   * make_sandbox must be in the path
   * A MySQL 5.1 binary distribution must be located in the MySQLsandbox repository
