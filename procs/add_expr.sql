@@ -26,18 +26,30 @@ DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
  *   flexviews.add_expr(v_mview_id, v_expr_type, v_expression, v_alias) 
  * FUNCTION
  *   This function adds an expression or indexes to the materialized view 
- *   definition.  This function may only be called on disabled materialized views,
- *   though in the future adding indexes will be possible on enabled views.
- *   This adds the specified expression to the materialized view. If using aggregate functions, non-aggregated columns in the SELECT clause are GROUP expressions, otherwise, SELECT expressions are COLUMN expressions. Column references within an expression (regardless of type) must be fully qualified with the TABLE_ALIAS specified in flexviews.ADD_TABLE(). WHERE expressions are added to the WHERE clause of the view. The PRIMARY and KEY expressions represent keys on the materialized view table. Note that PRIMARY and KEY expressions do not reference base table columns, but instead you must specify one or more EXPR_ALIAS(es) previously defined.
+ *   definition.  This function may normally be called only on disabled materialized views.
+ *   The exception are KEY and UNIQUE index expressions, which may be added at any time.
+ *
+ *   The expression specified in v_expression is added to the materialized view.
+ *   If your view will be using aggregate functions, then you should specify the 'GROUP' type for the  non-agg columns.
+ *   If your view does not use aggregation, then each expression should be of type 'COLUMN'.
+ *   In the expression, any references to table columns must be fully qualified with the TABLE_ALIAS that you
+ *   specified in the flexviews.ADD_TABLE() call.  For example, if you added a table with alias 'T', then when you reference
+ *   a column in that table, you must prefix the alias:
+ *   call flexviews.add_expr(flexviews.get_id('test','mv1'),'GROUP','t.c1', 'group_on_t_c1');
+ *
+ *   WHERE expressions are added to the WHERE clause of the view.
+ *
+ *   The UNIQUE and KEY expressions represent indexes on the materialized view table. Note that UNIQUE and KEY expressions do not reference base table columns, but instead you must specify one or more expression aliases.  This is similar to the use of table aliases in expressions (see above).  See the examples below for more info.
+ *
  * INPUTS
  *   * v_mview_id -- The materialized view id (see flexviews.get_id)
- *   * v_expr_type -- GROUP|BIT_AND|BIT_OR|BIT_XOR|COLUMN|SUM|COUNT|MIN|MAX|AVG|COUNT_DISTINCT|PRIMARY|KEY|PERCENTILE|STDDEV_POP|STDDEV_SAMP|VAR_SAMP|VAR_POP
+ *   * v_expr_type -- GROUP|BIT_AND|BIT_OR|BIT_XOR|COLUMN|SUM|COUNT|MIN|MAX|AVG|COUNT_DISTINCT|UNIQUE|KEY|PERCENTILE|STDDEV_POP|STDDEV_SAMP|VAR_SAMP|VAR_POP
  *   * v_expr -- The expression to add.  
  *      Any columns in the expression must be prefixed with a table alias created with flexviews.add_table.  
- *      When the PRIMARY or KEY expression types are used, the user must specify one more more aliases to
+ *      When the UNIQUE or KEY expression types are used, the user must specify one more more aliases to
  *      index.  These are normally aliases to GROUP expressions.
  *   * v_alias -- Every expression must be given a unique alias in the view, which becomes the
- *      name of the column in the materialized view. For PRIMARY and KEY indexes, this will be
+ *      name of the column in the materialized view. For UNIQUE and KEY expressions, this will be
  *      the name of the index in the view.  You must NOT use any reserved words in this name. 
  *
  *  NOTES
@@ -59,7 +71,6 @@ DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
  *   |html </tr><tr><td>BIT_AND<td>BIT_AND(uses auxilliary view)
  *   |html </tr><tr><td>BIT_OR<td>BIT_OR(uses auxilliary view)
  *   |html </tr><tr><td>BIT_XOR<td>BIT_XOR(uses auxilliary view)
- *   |html </tr><tr><td>PRIMARY<td>Adds a primary key to the view.  Specify column aliases in v_expr.  
  *   |html </tr><tr><td>KEY<td>Adds an index to the view.  Specify column aliases in v_expr.
  *   |html </tr><tr><td>PERCENTILE_##<td>Adds a percentile calculation to the view. 
  *   |html </tr></table>
@@ -72,10 +83,17 @@ DROP PROCEDURE IF EXISTS flexviews.`add_expr` ;;
  *     set @mv_id = flexviews.get_id('test', 'mv_example');
  *     call flexviews.add_table(@mv_id, 'schema', 'table', 'an_alias', NULL);
  *
+ *     #add a GROUP BY 
  *     call flexviews.add_expr(@mv_id, 'GROUP', 'an_alias.c1', 'c1');
+ *
+ *     #add a SUM
  *     call flexviews.add_expr(@mv_id, 'SUM', 'an_alias.c2', 'sum_c2');
- *     call flexviews.add_expr(@mv_id, 'PRIMARY', 'c1', 'pk');
+ *
+ *     # add indexes 
  *     call flexviews.add_expr(@mv_id, 'KEY', 'c1,sum_c2', 'key2');
+ *     call flexviews.add_expr(@mv_id, 'UNIQUE', 'alias1,alias2,alias3', 'index_name');
+ *
+ *     # calculate the 95th percentile of an expression
  *     call flexviews.add_expr(@mv_id, 'PERCENTILE_95', 'c1', 'pct_95');
 ******
 */
@@ -91,19 +109,22 @@ BEGIN
   DECLARE v_mview_enabled BOOLEAN default NULL;
   DECLARE v_mview_refresh_type TEXT;
   DECLARE v_percentile INT;
+  DECLARE v_mview_fqn TEXT;
 
   DECLARE v_mview_expr_order INT;
   DECLARE CONTINUE HANDLER FOR SQLSTATE '01000' SET v_error = true;
   SELECT IFNULL(mview_enabled,false),
-         mview_refresh_type
+         mview_refresh_type,
+         concat(mview_schema, '.', mview_name)
     INTO v_mview_enabled,
-         v_mview_refresh_type
+         v_mview_refresh_type,
+         v_mview_fqn
     FROM flexviews.mview
    WHERE mview_id = v_mview_id;
 
   IF v_mview_enabled IS NULL THEN
     SELECT 'FAILURE: The specified materialized view does not exist.' as message;
-  ELSEIF v_mview_enabled = 1 AND v_mview_refresh_type = 'INCREMENTAL'  THEN
+  ELSEIF v_mview_enabled = 1 AND v_mview_refresh_type = 'INCREMENTAL' AND ( v_mview_expr_type != 'KEY' AND v_mview_expr_type != 'UNIQUE' )  THEN
     SELECT 'FAILURE: The specified materialized view is enabled.  INCREMENTAL refresh materialized views may not be modified after they have been enabled.' as message;
   ELSE
 
@@ -148,6 +169,16 @@ BEGIN
           and column_name='mview_expr_type';
      end if;
   END IF;
+
+  IF v_mview_enabled = 1 AND ( v_mview_expr_type = 'KEY' OR v_mview_expr_type = 'UNIQUE' )  THEN
+
+    SET @v_sql = CONCAT('ALTER TABLE ', v_mview_fqn, ' ADD ', v_mview_expr_type, '(', v_mview_expression, ')'); 
+    PREPARE alter_stmt from @v_sql;
+    EXECUTE alter_stmt;
+    DEALLOCATE PREPARE alter_stmt;
+
+  END IF;
+  
 
 END ;;
 
