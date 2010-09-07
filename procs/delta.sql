@@ -1296,8 +1296,8 @@ selectLoop: LOOP
     SET v_select_list = CONCAT(v_select_list, ' AND ');    
   END IF;    
 
-  SET v_select_list = CONCAT(v_select_list, 'IFNULL(', v_mview_fqn ,'.`', v_mview_alias, '`, ":NULL:") = IFNULL(delta.`', v_mview_alias, '`, ":NULL:")' );   
---  SET v_select_list = CONCAT(v_select_list,  v_mview_fqn ,'.`', v_mview_alias, '` <=> delta.`', v_mview_alias, '`' );   
+--  SET v_select_list = CONCAT(v_select_list, 'IFNULL(', v_mview_fqn ,'.`', v_mview_alias, '`, ":NULL:") = IFNULL(delta.`', v_mview_alias, '`, ":NULL:")' );   
+  SET v_select_list = CONCAT(v_select_list,  v_mview_fqn ,'.`', v_mview_alias, '` <=> delta.`', v_mview_alias, '`' );   
 
 END LOOP;  
 RETURN v_select_list;
