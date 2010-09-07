@@ -3,6 +3,7 @@
 delete from flexviews.mview;
 
 create database if not exists test;
+use test;
 
 drop table if exists test.fact, test.dim;
 
@@ -101,6 +102,7 @@ SELECT NULL as mview$pk, (d.c2) as grp_c2, BIT_AND(f.c1) as bit_and_c1, BIT_OR(f
 
 delete from fact limit 40;
 
+select sleep(1);
 
 call flexviews.refresh(@mvid, 'BOTH' , NULL);
 
@@ -109,7 +111,6 @@ select * from test.test1;
 SELECT NULL as mview$pk, (d.c2) as grp_c2, BIT_AND(f.c1) as bit_and_c1, BIT_OR(f.c1) as bit_or_c1, BIT_XOR(f.c1) as bit_xor_c1, COUNT(DISTINCT (f.c1)) as count_dist_c1, MIN(f.c1) as min_c1, MAX(f.c1) as max_c1, STDDEV_POP(f.c1) as std_pop_c1, STDDEV_SAMP(f.c1) as std_samp_c1, VAR_POP(f.c1) as var_pop_c1, VAR_SAMP(f.c1) as var_samp_c1, COUNT(*) as CNT FROM  test.fact as f JOIN test.dim as d on f.dim_id = d.id GROUP BY (d.c2);
 
 call flexviews.disable(@mvid);
-
 delete from flexviews.mview;
 
 call flexviews.create('test','test1','INCREMENTAL');
@@ -121,6 +122,7 @@ call flexviews.add_expr(@mvid,'COUNT','*','fact_count');
 call flexviews.enable(@mvid);
 
 select fact_count from test.test1;
+select count(*) fact_count from test.fact;
 
 delete from test.fact;
 
@@ -129,6 +131,7 @@ select sleep(1);
 call flexviews.refresh(@mvid, 'BOTH' , NULL);
 
 select fact_count from test.test1;
+select count(*) fact_count from test.fact;
 
 insert into test.fact values (null , 1, 1, 1);
 
@@ -137,3 +140,5 @@ select sleep(1);
 call flexviews.refresh(@mvid, 'BOTH' , NULL);
 
 select fact_count from test.test1;
+select count(*) fact_count from test.fact;
+
