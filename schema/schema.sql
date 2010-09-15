@@ -82,7 +82,8 @@ CREATE TABLE `mview_table` (
   `mview_table_alias` varchar(100) default NULL,
   `mview_join_condition` varchar(1000),
   `mview_join_order` int(11) default '999',
-  PRIMARY KEY  (`mview_table_id`)
+  PRIMARY KEY  (`mview_table_id`),
+  UNIQUE KEY(mview_id, mview_table_alias)
 ) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=latin1;
 
 
