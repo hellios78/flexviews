@@ -1,24 +1,14 @@
-You may only upgrade from 1.5.3b.  
+If you are running 1.6.0.RC1, execute upgrade.sql
+IF YOU UPGRADE FROM 1.6.0RC1 THE YOU DO NOT HAVE TO REBUILD YOUR VIEWS
 
-Execute upgrade.sql as the root user:
 
-mysql -uroot < upgrade.sql
+You may also upgrade from 1.5.3b.  
 
-You should see the following:
-======== [cut] =========
+Execute upgrade_153.sql as the root user:
 
-Adding new aggregate function types to the flexviews metadata
+mysql -uroot < upgrade_153.sql
+ 
+YOU MUST DISABLE AND re-ENABLE views if upgrading from 1.5.3b
 
-Update any STDDEV expressions to be STDDEV_POP expression (same result, different name)
-
-Removing ability to add new STDDEV expressions (use STDDEV_POP)
-
-Installing stored procedures
-message
-If you see no errors, then installation was successful.
-
-upgrade done.
-
-======= [/cut] =========
 
 Report any problems to the bug tracker.
