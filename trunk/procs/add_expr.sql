@@ -122,6 +122,8 @@ BEGIN
     FROM flexviews.mview
    WHERE mview_id = v_mview_id;
 
+  SET max_sp_recursion_depth = 2;
+
   IF v_mview_enabled IS NULL THEN
     SELECT 'FAILURE: The specified materialized view does not exist.' as message;
   ELSEIF v_mview_enabled = 1 AND v_mview_refresh_type = 'INCREMENTAL' AND ( v_mview_expr_type != 'KEY' AND v_mview_expr_type != 'UNIQUE' )  THEN
@@ -168,6 +170,10 @@ BEGIN
           and table_schema='flexviews'
           and column_name='mview_expr_type';
      end if;
+  END IF;
+
+  IF v_mview_expr_type = 'GROUP'  OR v_mview_expr_type = 'COUNT' THEN
+    call flexviews.add_expr(v_mview_id, 'KEY', v_mview_alias, concat('key_', v_mview_alias)); 
   END IF;
 
   IF v_mview_enabled = 1 AND ( v_mview_expr_type = 'KEY' OR v_mview_expr_type = 'UNIQUE' )  THEN

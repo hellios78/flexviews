@@ -81,13 +81,15 @@ IF NOT flexviews.has_aggregates(v_mview_id) THEN
     DEALLOCATE PREPARE insert_stmt;
   END IF;
   -- DONE WITH INSERTS --
-
+/*
   -- DELETE TUPLES FROM THE MV 
   DROP TEMPORARY TABLE IF EXISTS deletes;
+*/
 
+  SET @v_row_count = 0;
   SET v_sql = CONCAT("CREATE TEMPORARY TABLE deletes ",
                     "( dkey int auto_increment primary key ) ",
-                    "AS SELECT * FROM ", v_delta_table, 
+                    "AS SELECT *, @v_row_count := @v_row_count + 1 FROM ", v_delta_table, 
                       " WHERE dml_type = -1 AND uow_id > ", v_refreshed_to_uow_id,
                         " AND uow_id <= ", v_until_uow_id);
 
@@ -98,9 +100,11 @@ IF NOT flexviews.has_aggregates(v_mview_id) THEN
   EXECUTE create_stmt;
   DEALLOCATE PREPARE create_stmt;
 
+/*
   SELECT COUNT(*) 
     INTO v_row_count
     FROM deletes;
+*/
 
   IF flexviews.get_delta_aliases(v_mview_id, '', FALSE) != '' AND v_row_count > 0 AND v_row_count IS NOT NULL THEN
 
@@ -155,11 +159,8 @@ ELSE -- this mview has aggregates
   END IF;
 
 
-  -- FIXME: There is a bug here that can result in zero count tuples still remaining in the view
-  IF flexviews.get_delta_aliases(v_mview_id, '', TRUE) != "" THEN
-set @nothing = 1;
+  IF flexviews.get_delta_aliases(v_mview_id, '', TRUE) = "" THEN
 
-  ELSE
     SET v_sql = CONCAT('DELETE ', v_delta_table, '.*, ', v_mview_schema, '.', v_mview_name, '.* ',
                        '  FROM ',v_delta_table,
                        '      ,', v_mview_schema, '.', v_mview_name,
@@ -174,7 +175,7 @@ set @nothing = 1;
 
 
   SET v_sql = CONCAT('SELECT ', get_delta_aliases(v_mview_id, '', FALSE), ' ',
-                     '  FROM ', v_delta_table,
+                     '  FROM ', v_delta_table, ' as x_select_',
                      ' WHERE uow_id > ', v_refreshed_to_uow_id,
                      '   AND uow_id <= ', v_until_uow_id, 
                      '   AND dml_type IS NOT NULL ');
@@ -192,15 +193,17 @@ END IF;
   -- END PROCESSING DELETES --
 
 IF v_cnt_column is not null THEN
- -- FIXME
 
   IF flexviews.get_delta_aliases(v_mview_id, '', TRUE) != '' THEN
+
      SET v_sql = CONCAT('DELETE ', v_mview_schema, '.', v_mview_name, '.*',
                          '  FROM ', v_mview_schema, '.', v_mview_name,
-                         '  JOIN ( SELECT ', flexviews.get_delta_aliases(v_mview_id, '', TRUE),
-                         '            ,SUM(', v_cnt_column,') _cnt ',
-                         '  FROM ', v_mview_schema, '.', v_mview_name, 
-                         ' GROUP BY ', flexviews.get_delta_aliases(v_mview_id, '', TRUE), 
+                         '  JOIN ( SELECT ', flexviews.get_delta_aliases(v_mview_id, 'mview', TRUE),
+                                          ',SUM(', v_cnt_column,') _cnt ',
+                         '  FROM ', v_mview_schema, '.', v_mview_name, ' as mview ',
+                         '  JOIN ( select distinct ', flexviews.get_delta_aliases(v_mview_id, '',true), 
+                                   ' from ', v_mview_schema, '.', v_mview_name, '_delta) x_select ' ,
+                         ' GROUP BY ', flexviews.get_delta_aliases(v_mview_id, 'mview', TRUE), 
                          ' HAVING _cnt <= 0) delta',
                          ' WHERE ', flexviews.get_delta_join(v_mview_id)
     );
@@ -230,7 +233,7 @@ END IF;
 
   
   -- Fix aggregate tables without group by attributes when they go to zero rows
-  SET v_sql = CONCAT('SELECT COUNT(*) INTO @mv_count FROM ', v_mview_schema, '.', v_mview_name);
+  SET v_sql = CONCAT('SELECT COUNT(*) INTO @mv_count FROM (select 1 from  ', v_mview_schema, '.', v_mview_name, ' LIMIT 1) x_select ');
   SET @v_sql = v_sql;
   PREPARE count_stmt FROM @v_sql;
   EXECUTE count_stmt;
@@ -365,26 +368,18 @@ SET v_from_clause = flexviews.get_delta_from(v_depth);
 
 SET v_sql = CONCAT(v_select_clause, '\n', v_from_clause, '\n', v_where_clause); 
 
+
 IF v_group_clause != "" THEN
-  SET v_sql = CONCAT( v_sql, ' AND (', v_mview_table_alias, '.dml_type * ', v_method, ' = 1)', v_group_clause, ' ',
-                    '\n UNION ALL \n', 
-                    v_sql, ' AND (', v_mview_table_alias, '.dml_type * ', v_method, ' = -1)', v_group_clause);
-
-  SET v_sql = CONCAT('INSERT INTO ', v_delta_table, '  SELECT * from (', v_sql, ' ) x_select_ where x_select_.dml_type is not null ');
-
+  SET v_sql = CONCAT('INSERT INTO ', v_delta_table, ' ', v_sql, ' AND (', v_mview_table_alias, '.dml_type * ', v_method, ' IS NOT NULL) ', v_group_clause);
 ELSE
+
   SET v_sql = CONCAT('INSERT INTO ', v_delta_table, ' ', v_sql);
+
 END IF;
+
  
 
 CALL flexviews.rlog(v_sql);
-
-/*
-SET @v_sql = v_sql;
-PREPARE insert_stmt FROM @v_sql;
-EXECUTE insert_stmt;
-DEALLOCATE PREPARE insert_stmt;
-*/
 
 -- Execute the SQL, returning the UOW_ID into v_uow_id, which is an OUT parameter
 call flexviews.uow_execute(v_sql, v_uow_id);
@@ -456,7 +451,7 @@ ELSE
          @__:=@__+1 -- simulate oracle's rownum
     FROM flexviews.mview_table   
    WHERE mview_id = v_mview_id
-   ORDER BY mview_join_order;   
+   ORDER BY mview_join_condition, mview_join_order;   
 /*
   example:
   37, 1, 15, NULL, 1
@@ -476,7 +471,6 @@ END IF;  -- setup complete
 -- We update the values in table_list.
 -- We need to restore the originals so save them.
 
--- FIXME: DEPENDENT RERESH BREAKS HERE :(
 DELETE FROM flexviews.table_list_old WHERE depth >= @__compute_delta_depth;
 INSERT INTO flexviews.table_list_old 
 SELECT * 
@@ -988,10 +982,15 @@ SELECT mview_name,
   FROM flexviews.mview
  WHERE mview_id = v_mview_id; 
    
-
+/*
 SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, '\n', 
 '(',flexviews.get_delta_aliases(v_mview_id, '', FALSE),')\n',
 'SELECT * FROM (', v_select_stmt ,') x_select_ \n',
+"ON DUPLICATE KEY UPDATE\n");
+*/
+SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, '\n', 
+'(',flexviews.get_delta_aliases(v_mview_id, '', FALSE),')\n(',
+v_select_stmt,')\n',
 "ON DUPLICATE KEY UPDATE\n");
 
 SET @HERE=1;
@@ -1084,64 +1083,7 @@ IF flexviews.has_aggregates(v_mview_id) = 1 THEN
    IF v_has_count_star = 0 THEN
      CALL flexviews.add_expr(v_mview_id, 'COUNT', '*', 'CNT');
    END IF;
-
-   BEGIN
-     DECLARE v_done BOOLEAN DEFAULT FALSE;
-     DECLARE v_mview_expression TEXT;
-     DECLARE v_mview_alias TEXT;
-     DECLARE v_has_count BOOLEAN DEFAULT FALSE;
-     DECLARE v_has_sum BOOLEAN DEFAULT FALSE;
-     DECLARE v_where_clause TEXT DEFAULT "";
-
-     DECLARE expr_cur
-      CURSOR FOR
-      SELECT mview_expression, 
-             mview_alias
-        FROM flexviews.mview_expression
-       WHERE mview_id = v_mview_id
-         AND mview_expr_type = 'AVG'
-       UNION ALL
-       SELECT NULL,NULL;
-
-     OPEN expr_cur;
-     avgLoop:LOOP
-       FETCH expr_cur 
-        INTO v_mview_expression, 
-             v_mview_alias;
-
-       IF v_mview_expression IS NULL THEN
-         SET v_done = TRUE;
-       END IF;
    
-       IF v_done = TRUE THEN
-         CLOSE expr_cur;
-         LEAVE avgLoop;
-       END IF;
-
-       SELECT IFNULL(COUNT(*), 0) 
-         INTO v_has_count
-         FROM flexviews.mview_expression
-        WHERE mview_id = v_mview_id
-          AND mview_expression = v_mview_expression
-          AND mview_expr_type = 'COUNT';
-       
-       SELECT IFNULL(COUNT(*), 0) 
-         INTO v_has_sum
-         FROM flexviews.mview_expression
-        WHERE mview_id = v_mview_id
-          AND mview_expression = v_mview_expression
-          AND mview_expr_type = 'SUM';
-/*
-       IF v_has_count = 0 THEN
-	 CALL flexviews.add_expr(v_mview_id, 'COUNT', v_mview_expression, CONCAT(v_mview_alias, '_CNT'));
-       END IF;
-
-       IF v_has_sum = 0 THEN
-	 CALL flexviews.add_expr(v_mview_id, 'SUM', v_mview_expression, CONCAT(v_mview_alias, '_SUM'));
-       END IF;
-*/
-     END LOOP;
-   END;
 END IF;
 SET v_error=0;
 
@@ -1202,11 +1144,13 @@ DECLARE v_mview_expr_type TEXT;
 DECLARE v_mview_expression TEXT;
 DECLARE v_mview_alias TEXT;
 DECLARE v_select_list TEXT default '';  
+DECLARE v_percentile int default null;
 
 DECLARE cur_select CURSOR 
 FOR  
 SELECT mview_expr_type, 
-       mview_alias
+       mview_alias,
+       percentile
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
    AND m.mview_expr_type in ( 'COLUMN', 'GROUP', 'MIN','MAX','COUNT_DISTINCT', 'STDDEV_SAMP','STDDEV_POP','VAR_POP','VAR_SAMP','BIT_AND','BIT_OR','BIT_XOR','GROUP_CONCAT', 'PERCENTILE' )
@@ -1220,7 +1164,8 @@ OPEN cur_select;
 selectLoop: LOOP    
   FETCH cur_select 
    INTO v_mview_expr_type,
-        v_mview_alias;
+        v_mview_alias,
+        v_percentile;
   
   IF v_done THEN      
     CLOSE cur_select;      
@@ -1232,6 +1177,8 @@ selectLoop: LOOP
   IF v_mview_expr_type != 'GROUP' AND v_mview_expr_type != 'COLUMN' THEN
     IF v_mview_expr_type = 'COUNT_DISTINCT' THEN
       SET v_mview_expression := CONCAT('COUNT(DISTINCT ', v_mview_expression,')');
+    ELSEIF v_mview_expr_type = 'PERCENTILE' THEN
+      SET v_mview_expression := flexviews.get_percentile(v_mview_expression, v_percentile);
     ELSE
       SET v_mview_expression := CONCAT(v_mview_expr_type, v_mview_expression);
     END IF;
