@@ -21,6 +21,21 @@
 error_reporting(E_ALL);
 ini_set('memory_limit', 1024 * 1024 * 1024);
 
+function my_mysql_query($a, $b=NULL, $debug=false) {
+  if($b) {
+    $r = mysql_query($a, $b);
+  } else { 
+    $r = mysql_query($a);
+  }
+
+  if(!$r) {
+    echo "SQL_ERROR IN STATEMENT:\n$a\n";
+    if($debug) print_r(debug_backtrace());
+  }
+
+  return $r;
+}
+
 class FlexCDC {
 	static function concat() {
     	$result = "";
@@ -138,7 +153,7 @@ EOREGEX
 		$schema = mysql_real_escape_string($schema);
 		$table  = mysql_real_escape_string($table, $this->dest);
 		$sql = sprintf($sql, $schema, $table);
-		$stmt = mysql_query($sql, $this->dest);
+		$stmt = my_mysql_query($sql, $this->dest);
 		if(mysql_fetch_array($stmt) !== false) {
 			return true;
 		}
@@ -148,11 +163,11 @@ EOREGEX
 	
 	public function setup($force=false) {
 		$sql = "SELECT @@server_id";
-		$stmt = mysql_query($sql, $this->source);
+		$stmt = my_mysql_query($sql, $this->source);
 		$row = mysql_fetch_array($stmt);
 		$this->serverId = $row[0];
 		if(!mysql_select_db($this->mvlogDB,$this->dest)) {
-			 mysql_query('CREATE DATABASE ' . $this->mvlogDB) or die('Could not CREATE DATABASE ' . $this->mvlogDB . "\n");
+			 my_mysql_query('CREATE DATABASE ' . $this->mvlogDB) or die('Could not CREATE DATABASE ' . $this->mvlogDB . "\n");
 			 mysql_select_db($this->mvlogDB,$this->dest);
 		}
 		if($this->table_exists($this->mvlogDB, 'mvlogs', $this->dest)) {
@@ -160,10 +175,10 @@ EOREGEX
 				trigger_error('Table already exists:mvlogs  Setup aborted!' , E_USER_ERROR);
 				return false;
 			}
-			mysql_query('DROP TABLE `' . $this->mvlogDB . '`.`mvlogs`;') or die('COULD NOT DROP TABLE: mvlogs\n' . mysql_error() . "\n");
+			my_mysql_query('DROP TABLE `' . $this->mvlogDB . '`.`mvlogs`;') or die('COULD NOT DROP TABLE: mvlogs\n' . mysql_error() . "\n");
 		}
 		
-		mysql_query("CREATE TABLE 
+		my_mysql_query("CREATE TABLE 
 					 `mvlogs` (table_schema varchar(50), 
                              table_name varchar(50), 
                              mvlog_name varchar(50),
@@ -178,9 +193,9 @@ EOREGEX
 				trigger_error('Table already exists:mview_uow  Setup aborted!' , E_USER_ERROR);
 				return false;
 			}
-			mysql_query('DROP TABLE `' . $this->mvlogDB . '`.`mview_uow`;') or die('COULD NOT DROP TABLE: mview_uow\n' . mysql_error() . "\n");
+			my_mysql_query('DROP TABLE `' . $this->mvlogDB . '`.`mview_uow`;') or die('COULD NOT DROP TABLE: mview_uow\n' . mysql_error() . "\n");
 		}		            
-		mysql_query("CREATE TABLE 
+		my_mysql_query("CREATE TABLE 
 		 			 `mview_uow` (
 					  	`uow_id` BIGINT AUTO_INCREMENT,
 					  	`commit_time` TIMESTAMP,
@@ -194,9 +209,9 @@ EOREGEX
 				trigger_error('Table already exists:binlog_consumer_status  Setup aborted!' , E_USER_ERROR);
 				return false;
 			}
-			mysql_query('DROP TABLE `' . $this->mvlogDB . '`.`binlog_consumer_status`;') or die('COULD NOT DROP TABLE: binlog_consumer_status\n' . mysql_error() . "\n");
+			my_mysql_query('DROP TABLE `' . $this->mvlogDB . '`.`binlog_consumer_status`;') or die('COULD NOT DROP TABLE: binlog_consumer_status\n' . mysql_error() . "\n");
 		}	
-		mysql_query("CREATE TABLE 
+		my_mysql_query("CREATE TABLE 
 					 `binlog_consumer_status` (
   					 	`server_id` int not null, 
   						`master_log_file` varchar(100) NOT NULL DEFAULT '',
@@ -208,28 +223,28 @@ EOREGEX
 		
 		
 		#find the current master position
-		$stmt = mysql_query('FLUSH TABLES WITH READ LOCK', $this->source) or die(mysql_error($this->source));
-		$stmt = mysql_query('SHOW MASTER STATUS', $this->source) or die(mysql_error($this->source));
+		$stmt = my_mysql_query('FLUSH TABLES WITH READ LOCK', $this->source) or die(mysql_error($this->source));
+		$stmt = my_mysql_query('SHOW MASTER STATUS', $this->source) or die(mysql_error($this->source));
 		$row = mysql_fetch_assoc($stmt);
-		$stmt = mysql_query('UNLOCK TABLES', $this->source) or die(mysql_error($this->source));
+		$stmt = my_mysql_query('UNLOCK TABLES', $this->source) or die(mysql_error($this->source));
 		$this->initialize();
 				
-		mysql_query("BEGIN;", $this->dest);
+		my_mysql_query("BEGIN;", $this->dest);
 		
 		
 		$sql = "UPDATE binlog_consumer_status bcs 
 		           set exec_master_log_pos = master_log_size 
 		         where server_id={$this->serverId} 
 		           AND master_log_file < '{$row['File']}'";
-		$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+		$stmt = my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
 
 		$sql = "UPDATE binlog_consumer_status bcs 
 		           set exec_master_log_pos = {$row['Position']} 
 		         where server_id={$this->serverId} 
 		           AND master_log_file = '{$row['File']}'";
-		$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+		$stmt = my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
 		
-		mysql_query("commit;", $this->dest);
+		my_mysql_query("commit;", $this->dest);
 		
 		return true;
 		
@@ -254,7 +269,7 @@ EOREGEX
 			
 		
 			#echo " -- Finding binary logs to process\n";
-			$stmt = mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
+			$stmt = my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 			$processedLogs = 0;
 			while($row = mysql_fetch_assoc($stmt)) {
 				++$processedLogs;
@@ -267,15 +282,17 @@ EOREGEX
 				$this->logName = $row['master_log_file'];
 				$this->process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos']);
 				$this->set_capture_pos();	
-				mysql_query('commit', $this->dest);
+				my_mysql_query('commit', $this->dest);
 				pclose($proc);
 			}
 			++$count;
+
 				if($always_sleep_one_second) {
 					sleep(1);
 				} else {
-					usleep(250000);	
+					usleep(20000);	
 				}
+
 				
 			
 			
@@ -307,7 +324,7 @@ EOREGEX
 		$this->mvlogList = array();
 			
 		$sql = "SELECT table_schema, table_name, mvlog_name from mvlogs where active_flag=1";
-		$stmt = mysql_query($sql, $this->dest);
+		$stmt = my_mysql_query($sql, $this->dest);
 		while($row = mysql_fetch_array($stmt)) {
 			$this->mvlogList[$row[0] . $row[1]] = $row[2];
 		}
@@ -315,13 +332,13 @@ EOREGEX
 	
 	/* Set up the destination connection */
 	function initialize_dest() {
-		#mysql_query("SELECT GET_LOCK('flexcdc::SOURCE_LOCK::" . $this->server_id . "',15)") or die("COULD NOT OBTAIN LOCK\n");
+		#my_mysql_query("SELECT GET_LOCK('flexcdc::SOURCE_LOCK::" . $this->server_id . "',15)") or die("COULD NOT OBTAIN LOCK\n");
 		mysql_select_db($this->mvlogDB) or die('COULD NOT CHANGE DATABASE TO:' . $this->mvlogDB . "\n");
-		mysql_query("BEGIN;", $this->dest) or die(mysql_error());
-		$stmt = mysql_query("SET SQL_LOG_BIN=0", $this->dest);
+		my_mysql_query("BEGIN;", $this->dest) or die(mysql_error());
+		$stmt = my_mysql_query("SET SQL_LOG_BIN=0", $this->dest);
 		if(!$stmt) die(mysql_error());
 
-		$stmt = mysql_query("select @@max_allowed_packet", $this->dest);
+		$stmt = my_mysql_query("select @@max_allowed_packet", $this->dest);
 		$row = mysql_fetch_array($stmt);
 		$this->max_allowed_packet = $row[0];	
 
@@ -335,13 +352,13 @@ EOREGEX
 		 * machine we are reading logs from.
 		 */
 		$sql = "SELECT @@server_id";
-		$stmt = mysql_query($sql, $this->source);
+		$stmt = my_mysql_query($sql, $this->source);
 		$row = mysql_fetch_array($stmt) or die($sql . "\n" . mysql_error() . "\n");
 		$this->serverId = $row[0];
 
 
 		$sql = "select @@binlog_format";
-		$stmt = mysql_query($sql, $this->dest);
+		$stmt = my_mysql_query($sql, $this->dest);
 		$row = mysql_fetch_array($stmt) or die($sql . "\n" . mysql_error() . "\n");
 
 		if($row[0] != 'ROW') {
@@ -349,19 +366,19 @@ EOREGEX
 			exit;
 		}
 		
-		$stmt = mysql_query("SHOW BINARY LOGS", $this->source);
+		$stmt = my_mysql_query("SHOW BINARY LOGS", $this->source);
 		if(!$stmt) die(mysql_error());
 		$has_logs = false;	
 		while($row = mysql_fetch_array($stmt)) {
 			if(!$has_logs) {
-				mysql_query("CREATE TEMPORARY table log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
+				my_mysql_query("CREATE TEMPORARY table log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
 				$has_logs = true;
 			}
 			$sql = sprintf("INSERT INTO binlog_consumer_status (server_id, master_log_file, master_log_size, exec_master_log_pos) values (%d, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $this->serverId,$row['Log_name'], $row['File_size'], $row['File_size']);
-			mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
+			my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 	
 			$sql = sprintf("INSERT INTO log_list (log_name) values ('%s')", $row['Log_name']);
-			mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
+			my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 		}
 	}
 	
@@ -370,11 +387,11 @@ EOREGEX
 		if(FlexCDC::table_exists($this->mvlogDB, 'log_list', $this->dest)) {	
 			// TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
 			$sql = "DELETE bcs.* FROM binlog_consumer_status bcs where server_id={$this->serverId} AND master_log_file not in (select log_name from log_list)";
-			mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
+			my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 		} 
 
 		$sql = "DROP TEMPORARY table log_list";
-		mysql_query($sql, $this->dest) or die("Could not drop TEMPORARY TABLE log_list\n");
+		my_mysql_query($sql, $this->dest) or die("Could not drop TEMPORARY TABLE log_list\n");
 		
 	}
 
@@ -382,19 +399,19 @@ EOREGEX
 	function set_capture_pos() {
 		$sql = sprintf("UPDATE binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = %d", $this->binlogPosition, $this->logName, $this->serverId);
 		
-		mysql_query($sql, $this->dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error($this->dest));
+		my_mysql_query($sql, $this->dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error($this->dest));
 		
 	}
 
 	/* Called when a new transaction starts*/
 	function start_transaction() {
-		mysql_query("START TRANSACTION", $this->dest) or die("COULD NOT START TRANSACTION;\n" . mysql_error());
+		my_mysql_query("START TRANSACTION", $this->dest) or die("COULD NOT START TRANSACTION;\n" . mysql_error());
         $this->set_capture_pos();
 		$sql = sprintf("INSERT INTO mview_uow values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'));",rtrim($this->timeStamp));
-		mysql_query($sql,$this->dest) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
+		my_mysql_query($sql,$this->dest) or die("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
 		 
 		$sql = "SET @fv_uow_id := LAST_INSERT_ID();";
-		mysql_query($sql, $this->dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error($this->dest));
+		my_mysql_query($sql, $this->dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error($this->dest));
 
 	}
 
@@ -408,23 +425,26 @@ EOREGEX
 		$this->inserts = $this->deletes = array();
 
 		$this->set_capture_pos();
-		mysql_query("COMMIT", $this->dest) or die("COULD NOT COMMIT TRANSACTION;\n" . mysql_error());
+		my_mysql_query("COMMIT", $this->dest) or die("COULD NOT COMMIT TRANSACTION;\n" . mysql_error());
 	}
 
 	/* Called when a transaction rolls back */
 	function rollback_transaction() {
-		mysql_query("ROLLBACK", $this->dest) or die("COULD NOT ROLLBACK TRANSACTION;\n" . mysql_error());
+		$this->inserts = $this->deletes = array();
+		my_mysql_query("ROLLBACK", $this->dest) or die("COULD NOT ROLLBACK TRANSACTION;\n" . mysql_error());
 		#update the capture position and commit, because we don't want to keep reading a truncated log
 		$this->set_capture_pos();
-		mysql_query("COMMIT", $this->dest) or die("COULD NOT COMMIT TRANSACTION LOG POSITION UPDATE;\n" . mysql_error());
+		my_mysql_query("COMMIT", $this->dest) or die("COULD NOT COMMIT TRANSACTION LOG POSITION UPDATE;\n" . mysql_error());
 		
 	}
 
 	/* Called when a row is deleted, or for the old image of an UPDATE */
 	function delete_row() {
+		$key = '`' . $this->mvlogDB . '`.`' . $this->mvlog_table . '`';
 		if ( $this->bulk_insert ) {
-			$this->deletes[] = $this->row;
-			if(count($this->inserts) >= 10000) {
+			if(empty($this->deletes[$key])) $this->deletes[$key] = array();
+			$this->deletes[$key][] = $this->row;
+			if(count($this->deletes[$key]) >= 10000) {
 				$this->process_rows();	
 			}
 		} else {
@@ -433,20 +453,22 @@ EOREGEX
 				if($col[0] == "'") {
 					 $col = trim($col,"'");
 				}
-				$col = str_replace("'","''",$col);
+				$col = mysql_real_escape_string($col);
 				$row[] = "'$col'";
 			}
 			$valList = "(-1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $row) . ")";
 			$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
-			mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
+			my_mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 		}
 	}
 
 	/* Called when a row is inserted, or for the new image of an UPDATE */
 	function insert_row() {
+		$key = '`' . $this->mvlogDB . '`.`' . $this->mvlog_table . '`';
 		if ( $this->bulk_insert ) {
-			$this->inserts[] = $this->row;
-			if(count($this->deletes) >= 10000) {
+			if(empty($this->inserts[$key])) $this->inserts[$key] = array();
+			$this->inserts[$key][] = $this->row;
+			if(count($this->inserts[$key]) >= 10000) {
 				$this->process_rows();	
 			}
 		} else {
@@ -455,53 +477,58 @@ EOREGEX
 				if($col[0] == "'") {
 					 $col = trim($col,"'");
 				}
-				$col = str_replace("'","''",$col);
+				$col = mysql_real_escape_string($col);
 				$row[] = "'$col'";
 			}
 			$valList = "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
 			$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
-			mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
+			my_mysql_query($sql, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 		}
 	}
 
 	function process_rows() {
 		$i = 0;
 		$valList =  "";
-
-		$sql = sprintf("INSERT INTO `%s`.`%s` VALUES ", $this->mvlogDB, $this->mvlog_table );
+		
 		
 		while($i<2) {
 			if ($i==0) {
-				$rows = $this->inserts;
+				$data = $this->inserts;
 				$mode = 1;
 			} else {
-				$rows = $this->deletes;
+				$data = $this->deletes;
 				$mode = -1;
 			}		
-			foreach($rows as $the_row) {	
-				$row = array();
-				foreach($the_row as $col) {
-					if($col[0] == "'") {
-						$col = trim($col,"'");
-					}
-					$col = str_replace("'","''",$col);
-					$row[] = "'$col'";
-				}
-				if($valList) $valList .= ",\n";	
-				$valList .= "($mode, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
-				$bytes = strlen($valList) + strlen($sql);
-				$allowed = floor($bytes * .99);  #allowed len is 99% of max_allowed_packet	
-				if($bytes > $allowed) {
-					mysql_query($sql . $valList, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
-					$valList = "";
-				}
+			$tables = array_keys($data);
+			foreach($tables as $table) {
+				$rows = $data[$table];	
 				
+				$sql = sprintf("INSERT INTO %s VALUES ", $table);
+				foreach($rows as $the_row) {	
+					$row = array();
+					foreach($the_row as $col) {
+						if($col[0] == "'") {
+							$col = trim($col,"'");
+						}
+						$col = mysql_real_escape_string($col);
+						$row[] = "'$col'";
+					}
+					if($valList) $valList .= ",\n";	
+					$valList .= "($mode, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
+					$bytes = strlen($valList) + strlen($sql);
+					$allowed = floor($bytes * .99);  #allowed len is 99% of max_allowed_packet	
+					if($bytes > $allowed) {
+						my_mysql_query($sql . $valList, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
+						$valList = "";
+					}
+					
+				}
+				if($valList) {
+					my_mysql_query($sql . $valList, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
+				}
 			}
-			++$i;
-		}
 
-		if($valList) {
-			mysql_query($sql . $valList, $this->dest) or die("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
+			++$i;
 		}
 
 		unset($this->inserts);
@@ -633,13 +660,13 @@ EOREGEX
 					
 					$sql = "DELETE from mvlogs where table_name='$old_base_table' and table_schema='$old_schema'";
 					
-					mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+					my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
 					$sql = "REPLACE INTO mvlogs (mvlog_name, table_name, table_schema) values ('$new_log_table', '$new_base_table', '$new_schema')";
-					mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+					my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
 					
 					$sql = 'RENAME TABLE ' . $clause;
-					mysql_query($sql, $this->dest) or die('DURING RENAME:\n' . $new_sql . "\n" . mysql_error($this->dest) . "\n");
-					mysql_query('commit', $this->dest);					
+					my_mysql_query($sql, $this->dest) or die('DURING RENAME:\n' . $new_sql . "\n" . mysql_error($this->dest) . "\n");
+					my_mysql_query('commit', $this->dest);					
 				
 					$this->mvlogList = array();
 					$this->refresh_mvlog_cache();
@@ -741,14 +768,14 @@ EOREGEX
 					if($new_clauses) {
 						$new_alter = 'ALTER TABLE ' . $old_log_table . ' ' . $new_clauses;
 						
-						mysql_query($new_alter, $this->dest) or die($new_alter. "\n" . mysql_error($this->dest) . "\n");
+						my_mysql_query($new_alter, $this->dest) or die($new_alter. "\n" . mysql_error($this->dest) . "\n");
 						if($new_log_table) {
 							$sql = "DELETE from mvlogs where table_name='$old_base_table' and table_schema='$old_schema'";
-							mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+							my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
 
 							$sql = "INSERT INTO mvlogs (mvlog_name, table_name, table_schema) values ('$new_log_table', '$new_base_table', '$new_schema')";
 							
-							mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
+							my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
 							$this->mvlogList = array();
 							$this->refresh_mvlog_cache();
 						}
@@ -952,7 +979,7 @@ EOREGEX
 	
 		$cursor_sql = "SELECT COLUMN_NAME, IF(COLUMN_TYPE='TIMESTAMP', 'DATETIME', COLUMN_TYPE) COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='$v_table_name' AND TABLE_SCHEMA = '$v_schema_name'";
 	
-		$cur_columns = mysql_query($cursor_sql, $this->source);
+		$cur_columns = my_mysql_query($cursor_sql, $this->source);
 		$v_sql = '';
 	
 		while(1) {
@@ -981,10 +1008,10 @@ EOREGEX
 		}
 			
 		$v_sql = FlexCDC::concat('CREATE TABLE IF NOT EXISTS`', $this->mvlogDB ,'`.`' ,$v_schema_name, '_', $v_table_name,'` ( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', $v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
-		$create_stmt = mysql_query($v_sql, $this->dest);
+		$create_stmt = my_mysql_query($v_sql, $this->dest);
 		if(!$create_stmt) die('COULD NOT CREATE MVLOG. ' . $v_sql . "\n");
 		$exec_sql = " INSERT IGNORE INTO mvlogs( table_schema , table_name , mvlog_name ) values('$v_schema_name', '$v_table_name', '" . $v_schema_name . "_" . $v_table_name . "')";
-		mysql_query($exec_sql) or die($exec_sql . ':' . mysql_error($this->dest) . "\n");
+		my_mysql_query($exec_sql) or die($exec_sql . ':' . mysql_error($this->dest) . "\n");
 	
 	}
 }

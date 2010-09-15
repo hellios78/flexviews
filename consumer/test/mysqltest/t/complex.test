@@ -72,6 +72,7 @@ call flexviews.add_expr(@mvid,'bit_xor','f.c1','bit_xor_c1');
 call flexviews.add_expr(@mvid,'count_distinct','f.c1','count_dist_c1');
 call flexviews.add_expr(@mvid,'min','f.c1','min_c1');
 call flexviews.add_expr(@mvid,'max','f.c1','max_c1');
+call flexviews.add_expr(@mvid,'avg','f.c1','avg_c1');
 call flexviews.add_expr(@mvid,'stddev_pop','f.c1','std_pop_c1');
 call flexviews.add_expr(@mvid,'stddev_samp','f.c1','std_samp_c1');
 call flexviews.add_expr(@mvid,'var_pop','f.c1','var_pop_c1');
@@ -85,7 +86,7 @@ select flexviews.get_sql(@mvid);
 
 select * from test.test1;
 
-SELECT NULL as mview$pk, (d.c2) as grp_c2, BIT_AND(f.c1) as bit_and_c1, BIT_OR(f.c1) as bit_or_c1, BIT_XOR(f.c1) as bit_xor_c1, COUNT(DISTINCT (f.c1)) as count_dist_c1, MIN(f.c1) as min_c1, MAX(f.c1) as max_c1, STDDEV_POP(f.c1) as std_pop_c1, STDDEV_SAMP(f.c1) as std_samp_c1, VAR_POP(f.c1) as var_pop_c1, VAR_SAMP(f.c1) as var_samp_c1, COUNT(*) as CNT FROM  test.fact as f JOIN test.dim as d on f.dim_id = d.id GROUP BY (d.c2);
+SELECT NULL as mview$pk, (d.c2) as grp_c2, BIT_AND(f.c1) as bit_and_c1, BIT_OR(f.c1) as bit_or_c1, BIT_XOR(f.c1) as bit_xor_c1, COUNT(DISTINCT (f.c1)) as count_dist_c1, MIN(f.c1) as min_c1, MAX(f.c1) as max_c1, avg(f.c1) as avg_c1, STDDEV_POP(f.c1) as std_pop_c1, STDDEV_SAMP(f.c1) as std_samp_c1, VAR_POP(f.c1) as var_pop_c1, VAR_SAMP(f.c1) as var_samp_c1, COUNT(*) as CNT FROM  test.fact as f JOIN test.dim as d on f.dim_id = d.id GROUP BY (d.c2);
 
 insert into fact select null, c2+(select count(*) from test.fact), c2+c1, c1 % 10 from fact;
 insert into fact select null, c2+(select count(*) from test.fact), c2+c1, c1 % 10 from fact;
@@ -98,7 +99,8 @@ call flexviews.refresh(@mvid, 'BOTH' , NULL);
 
 select * from test.test1;
 
-SELECT NULL as mview$pk, (d.c2) as grp_c2, BIT_AND(f.c1) as bit_and_c1, BIT_OR(f.c1) as bit_or_c1, BIT_XOR(f.c1) as bit_xor_c1, COUNT(DISTINCT (f.c1)) as count_dist_c1, MIN(f.c1) as min_c1, MAX(f.c1) as max_c1, STDDEV_POP(f.c1) as std_pop_c1, STDDEV_SAMP(f.c1) as std_samp_c1, VAR_POP(f.c1) as var_pop_c1, VAR_SAMP(f.c1) as var_samp_c1, COUNT(*) as CNT FROM  test.fact as f JOIN test.dim as d on f.dim_id = d.id GROUP BY (d.c2);
+SELECT NULL as mview$pk, (d.c2) as grp_c2, BIT_AND(f.c1) as bit_and_c1, BIT_OR(f.c1) as bit_or_c1, BIT_XOR(f.c1) as bit_xor_c1, COUNT(DISTINCT (f.c1)) as count_dist_c1, MIN(f.c1) as min_c1, MAX(f.c1) as max_c1, avg(f.c1) as avg_c1, STDDEV_POP(f.c1) as std_pop_c1, STDDEV_SAMP(f.c1) as std_samp_c1, VAR_POP(f.c1) as var_pop_c1, VAR_SAMP(f.c1) as var_samp_c1, COUNT(*) as CNT FROM  test.fact as f JOIN test.dim as d on f.dim_id = d.id GROUP BY (d.c2);
+#SELECT NULL as mview$pk, (d.c2) as grp_c2, BIT_AND(f.c1) as bit_and_c1, BIT_OR(f.c1) as bit_or_c1, BIT_XOR(f.c1) as bit_xor_c1, COUNT(DISTINCT (f.c1)) as count_dist_c1, MIN(f.c1) as min_c1, MAX(f.c1) as max_c1, STDDEV_POP(f.c1) as std_pop_c1, STDDEV_SAMP(f.c1) as std_samp_c1, VAR_POP(f.c1) as var_pop_c1, VAR_SAMP(f.c1) as var_samp_c1, COUNT(*) as CNT FROM  test.fact as f JOIN test.dim as d on f.dim_id = d.id GROUP BY (d.c2);
 
 delete from fact limit 40;
 
@@ -108,7 +110,8 @@ call flexviews.refresh(@mvid, 'BOTH' , NULL);
 
 select * from test.test1;
 
-SELECT NULL as mview$pk, (d.c2) as grp_c2, BIT_AND(f.c1) as bit_and_c1, BIT_OR(f.c1) as bit_or_c1, BIT_XOR(f.c1) as bit_xor_c1, COUNT(DISTINCT (f.c1)) as count_dist_c1, MIN(f.c1) as min_c1, MAX(f.c1) as max_c1, STDDEV_POP(f.c1) as std_pop_c1, STDDEV_SAMP(f.c1) as std_samp_c1, VAR_POP(f.c1) as var_pop_c1, VAR_SAMP(f.c1) as var_samp_c1, COUNT(*) as CNT FROM  test.fact as f JOIN test.dim as d on f.dim_id = d.id GROUP BY (d.c2);
+SELECT NULL as mview$pk, (d.c2) as grp_c2, BIT_AND(f.c1) as bit_and_c1, BIT_OR(f.c1) as bit_or_c1, BIT_XOR(f.c1) as bit_xor_c1, COUNT(DISTINCT (f.c1)) as count_dist_c1, MIN(f.c1) as min_c1, MAX(f.c1) as max_c1, avg(f.c1) as avg_c1, STDDEV_POP(f.c1) as std_pop_c1, STDDEV_SAMP(f.c1) as std_samp_c1, VAR_POP(f.c1) as var_pop_c1, VAR_SAMP(f.c1) as var_samp_c1, COUNT(*) as CNT FROM  test.fact as f JOIN test.dim as d on f.dim_id = d.id GROUP BY (d.c2);
+#SELECT NULL as mview$pk, (d.c2) as grp_c2, BIT_AND(f.c1) as bit_and_c1, BIT_OR(f.c1) as bit_or_c1, BIT_XOR(f.c1) as bit_xor_c1, COUNT(DISTINCT (f.c1)) as count_dist_c1, MIN(f.c1) as min_c1, MAX(f.c1) as max_c1, STDDEV_POP(f.c1) as std_pop_c1, STDDEV_SAMP(f.c1) as std_samp_c1, VAR_POP(f.c1) as var_pop_c1, VAR_SAMP(f.c1) as var_samp_c1, COUNT(*) as CNT FROM  test.fact as f JOIN test.dim as d on f.dim_id = d.id GROUP BY (d.c2);
 
 call flexviews.disable(@mvid);
 delete from flexviews.mview;
