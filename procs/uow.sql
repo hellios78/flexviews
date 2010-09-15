@@ -107,7 +107,7 @@ BEGIN
     SET v_uow_id := NULL;
 
     wait_for_uowid: LOOP
-
+/*
      SELECT max(uow_id)
        INTO v_uow_id
        FROM (
@@ -118,13 +118,19 @@ BEGIN
            UNION ALL
            select NULL) derived
       LIMIT 1;
+*/
+          select max(uow_id)
+          into v_uow_id
+          FROM flexviews.flexviews_mview_signal
+           WHERE signal_id >= v_signal_id
+             AND dml_type = 1;
     
 
       IF (v_uow_id IS NOT NULL) THEN
         LEAVE wait_for_uowid;
       END IF;
 
-    set @nothing := SLEEP(.005);
+    set @nothing := SLEEP(.001);
 
     END LOOP wait_for_uowid;
   END;
