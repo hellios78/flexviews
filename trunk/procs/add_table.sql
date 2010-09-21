@@ -75,7 +75,7 @@ BEGIN
      AND table_schema = v_mview_table_schema
    LIMIT 1;
 
-  if @v_exists != true  AND @force != true then
+  if @v_exists != true then
     call flexviews.signal('NO_SUCH_TABLE'); 
   end if;
 
@@ -89,7 +89,7 @@ BEGIN
      AND active_flag = true
    LIMIT 1;
 
-  if @v_exists != true  and @force != true then
+  if @v_exists != true  then
     call flexviews.signal('NO_CHANGELOG_ON_TABLE'); 
   end if;
 
