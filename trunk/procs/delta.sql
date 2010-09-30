@@ -200,11 +200,13 @@ IF v_cnt_column is not null THEN
                          '  FROM ', v_mview_schema, '.', v_mview_name,
                          '  JOIN ( SELECT ', flexviews.get_delta_aliases(v_mview_id, 'mview', TRUE),
                                           ',SUM(', v_cnt_column,') _cnt ',
-                         '  FROM ', v_mview_schema, '.', v_mview_name, ' as mview ',
-                         '  JOIN ( select distinct ', flexviews.get_delta_aliases(v_mview_id, '',true), 
-                                   ' from ', v_mview_schema, '.', v_mview_name, '_delta) x_select ' ,
+                                  '  FROM ', v_mview_schema, '.', v_mview_name, ' as mview ',
+                                  '  NATURAL JOIN ( select distinct ', flexviews.get_delta_aliases(v_mview_id, '',true), 
+                                            ' from ', v_mview_schema, '.', v_mview_name, '_delta ', 
+                                  '       ) x_select ',
                          ' GROUP BY ', flexviews.get_delta_aliases(v_mview_id, 'mview', TRUE), 
-                         ' HAVING _cnt <= 0) delta',
+                         ' HAVING _cnt <= 0) delta ',
+                         ' USING ( ', flexviews.get_delta_aliases(v_mview_id, '', true), ')',
                          ' WHERE ', flexviews.get_delta_join(v_mview_id)
     );
 
