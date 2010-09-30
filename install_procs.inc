@@ -49,8 +49,10 @@ USE flexviews;
 \. ./procs/fvrand.sql
 \. ./procs/refresh_all.sql
 
-\. ./events/apply.sql
-\. ./events/compute.sql
+#\. ./events/apply.sql
+#\. ./events/compute.sql
+
+\. ./procs/get_percentile.sql
 
 REPLACE into flexviews.mview_settings values ('mvlog_db', 'flexviews');
 set @uow_id = NULL;
