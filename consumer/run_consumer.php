@@ -82,7 +82,7 @@ if(!empty($params['pid'])) {
 }
 
 
-require_once('flexcdc.php');
+require_once('include/flexcdc.php');
 $cdc = new FlexCDC($settings);
 #capture changes forever (-1):
 $cdc->capture_changes(-1);
