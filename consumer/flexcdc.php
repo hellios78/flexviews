@@ -62,22 +62,22 @@ EOREGEX
 	}
   	
 	# Settings to enable bulk import
-	private $inserts = array();
-	private $deletes = array();
-	private $bulk_insert = true;
+	protected $inserts = array();
+	protected $deletes = array();
+	protected $bulk_insert = true;
   	
-	private $mvlogDB = NULL;
+	protected $mvlogDB = NULL;
 	public	$mvlogList = array();
-	private $activeDB = NULL;
-	private $onlyDatabases = array();
-	private $cmdLine;
+	protected $activeDB = NULL;
+	protected $onlyDatabases = array();
+	protected $cmdLine;
 
-	private $source = NULL;
-	private $dest = NULL;
+	protected $source = NULL;
+	protected $dest = NULL;
 
-	private $serverId = NULL;
+	protected $serverId = NULL;
 	
-	private $binlogServerId=1;
+	protected $binlogServerId=1;
 	
 	public  $raiseWarnings = false;
 	
@@ -141,7 +141,7 @@ EOREGEX
 	    
 	}
 
-	private function initialize() {
+	protected function initialize() {
 		$this->initialize_dest();
 		$this->get_source_logs();
 		$this->cleanup_logs();
@@ -301,7 +301,7 @@ EOREGEX
 
 	}
 	
-	private function read_settings() {
+	protected function read_settings() {
 		
 		if(!empty($argv[1])) {
 			$iniFile = $argv[1];
@@ -319,7 +319,7 @@ EOREGEX
 	}
 
 	
-	private function refresh_mvlog_cache() {
+	protected function refresh_mvlog_cache() {
 		
 		$this->mvlogList = array();
 			
@@ -397,7 +397,7 @@ EOREGEX
 
 	/* Update the binlog_consumer_status table to indicate where we have executed to. */
 	function set_capture_pos() {
-		$sql = sprintf("UPDATE binlog_consumer_status set exec_master_log_pos = %d where master_log_file = '%s' and server_id = %d", $this->binlogPosition, $this->logName, $this->serverId);
+		$sql = sprintf("UPDATE `" . $this->mvlogDB . "`.`binlog_consumer_status` set exec_master_log_pos = %d where master_log_file = '%s' and server_id = %d", $this->binlogPosition, $this->logName, $this->serverId);
 		
 		my_mysql_query($sql, $this->dest) or die("COULD NOT EXEC:\n$sql\n" . mysql_error($this->dest));
 		
