@@ -33,7 +33,7 @@ if(!empty($params['ini'])) {
 	$settings = @parse_ini_file($params['ini'], true);
 }
 
-require_once('flexcdc.php');
+require_once('include/flexcdc.php');
 $cdc = new FlexCDC($settings);
 
 #this will read settings from the INI file and initialize
