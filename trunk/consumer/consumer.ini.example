@@ -2,20 +2,29 @@
 ;location of mysqlbinlog.  path will be searched if this path is not provided
 mysqlbinlog=/usr/bin/mysqlbinlog
 
+;The database in which to write changelogs and in which to store the state tables (see the next section).  If you are using Flexviews, then you MUST NOT change this value.
+database=flexviews
+
+;the following three tables store the metadata information for FlexCDC including at which binary log file/position to which binary logs have been processed. You MUST NOT include database names on these tables.  They will all be placed into the databasespecified above.
+
+;if you are using flexcdc for something OTHER THAN FLEXVIEWS then you can remap the table names which FlexCDC uses to alternative names.  Since Flexviews includes stored procedures with the database name fixed to 'flexviews', and 
+
+;note that flexsbr.php (which executes SBR statements) only uses the binlog_consumer_status table.
+binlog_consumer_status=binlog_consumer_status
+mvlogs=mvlogs
+mview_uow=mview_uow
+
 ;comma separated list of databases to collect changelogs from
 ;only_databases=flexviews,db1,db2,db3
-
-;The database in which to write changelogs
-database=flexviews
 
 ;Automatically create changelog tables and enable changelogging for ALL tables.
 ;You might not want to use this option if any of the following is true:
 ;  you have lots of tables
 ;  you use temporary tables
 ;  you drop and create tables with the same name
+;  you are NOT using flexviews
 
-;In those situations, instead set auto_changelog=false and use the flexviews.create_mvlog function (included in Flexviews)
-;You can also call the public function flexviews.create_mvlog() (see flexcdc.php)
+;If you choose not to use the auto_changelog feature, then you can use add_table.php
 auto_changelog=false
 
 ;If you set raise_warnings=true then when Flexviews sees an unsupported command (like DROP) it raises a warning to
@@ -23,9 +32,7 @@ auto_changelog=false
 ;raise_warnings = true
 
 ;Bulk insertion inserts all changes in a transaction as one big INSERT statement.
-;Right now Flexviews does not check max_allowed_packet and might construct insert statements that are too large to replicate
 bulk_insert=true
-
 
 ;The SOURCE is where the change logs are read from.  This does not have to be the same as the local machine.
 [source]
