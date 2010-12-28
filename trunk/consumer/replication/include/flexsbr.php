@@ -54,6 +54,9 @@ class FlexSBR extends FlexCDC {
 		} 
 
 		$this->mvlogDB=$settings['replication']['database'];
+		if(!empty($settings['replication']['binlog_consumer_status'])) {
+			$this->binlog_consumer_status=$settings['replication']['binlog_consumer_status'];	
+		}
 		
 		#build the command line from user, host, password, socket options in the ini file in the [source] section
 		foreach($settings['source'] as $k => $v) {
@@ -79,60 +82,8 @@ class FlexSBR extends FlexCDC {
 	}
 
 	public function setup($force=false) {
-		$sql = "SELECT @@server_id";
-		$stmt = my_mysql_query($sql, $this->source);
-		$row = mysql_fetch_array($stmt);
-		$this->serverId = $row[0];
-		if(!mysql_select_db($this->mvlogDB,$this->dest)) {
-			 my_mysql_query('CREATE DATABASE ' . $this->mvlogDB) or die('Could not CREATE DATABASE ' . $this->mvlogDB . "\n");
-			 mysql_select_db($this->mvlogDB,$this->dest);
-		}
-
-		if(FlexCDC::table_exists($this->mvlogDB, 'binlog_consumer_status', $this->dest)) {
-			if(!$force) {
-				trigger_error('Table already exists:binlog_consumer_status  Setup aborted!' , E_USER_ERROR);
-				return false;
-			}
-			my_mysql_query('DROP TABLE `' . $this->mvlogDB . '`.`binlog_consumer_status`;') or die('COULD NOT DROP TABLE: binlog_consumer_status\n' . mysql_error() . "\n");
-		}	
-		my_mysql_query("CREATE TABLE 
-					 `binlog_consumer_status` (
-  					 	`server_id` int not null, 
-  						`master_log_file` varchar(100) NOT NULL DEFAULT '',
-  						`master_log_size` int(11) DEFAULT NULL,
-  						`exec_master_log_pos` int(11) default null,
-  						PRIMARY KEY (`server_id`, `master_log_file`)
-					  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
-		            , $this->dest) or die('COULD NOT CREATE TABLE binlog_consumer_status: ' . mysql_error($this->dest) . "\n");
-		
-		
-		#find the current master position
-		$stmt = my_mysql_query('FLUSH TABLES WITH READ LOCK', $this->source) or die(mysql_error($this->source));
-		$stmt = my_mysql_query('SHOW MASTER STATUS', $this->source) or die(mysql_error($this->source));
-		$row = mysql_fetch_assoc($stmt);
-		$stmt = my_mysql_query('UNLOCK TABLES', $this->source) or die(mysql_error($this->source));
-		$this->initialize();
-				
-		my_mysql_query("BEGIN;", $this->dest);
-		
-		
-		$sql = "UPDATE binlog_consumer_status bcs 
-		           set exec_master_log_pos = master_log_size 
-		         where server_id={$this->serverId} 
-		           AND master_log_file < '{$row['File']}'";
-		$stmt = my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
-
-		$sql = "UPDATE binlog_consumer_status bcs 
-		           set exec_master_log_pos = {$row['Position']} 
-		         where server_id={$this->serverId} 
-		           AND master_log_file = '{$row['File']}'";
-		$stmt = my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error($this->dest) . "\n");
-		
-		my_mysql_query("commit;", $this->dest);
-		
-		return true;
-		
-			
+		#FlexSBR only needs a single state table
+		return parent::setup($force, 'binlog_consumer_status');	
 	}
 	
 
@@ -182,6 +133,7 @@ class FlexSBR extends FlexCDC {
 		$row = mysql_fetch_array($stmt) or die($sql . "\n" . mysql_error() . "\n");
 		$this->serverId = $row[0];
 
+
 		$stmt = my_mysql_query("SHOW BINARY LOGS", $this->source);
 		if(!$stmt) die(mysql_error());
 		$has_logs = false;	
@@ -190,13 +142,14 @@ class FlexSBR extends FlexCDC {
 				my_mysql_query("CREATE TEMPORARY table log_list (log_name char(50), primary key(log_name))",$this->dest) or die(mysql_error());
 				$has_logs = true;
 			}
-			$sql = sprintf("INSERT INTO binlog_consumer_status (server_id, master_log_file, master_log_size, exec_master_log_pos) values (%d, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $this->serverId,$row['Log_name'], $row['File_size'], $row['File_size']);
+			$sql = sprintf("INSERT INTO `" . $this->mvlogDB . "`.`" . $this->binlog_consumer_status ."`(server_id, master_log_file, master_log_size, exec_master_log_pos) values (%d, '%s', %d, 0) ON DUPLICATE KEY UPDATE master_log_size = %d ;", $this->serverId,$row['Log_name'], $row['File_size'], $row['File_size']);
 			my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 	
 			$sql = sprintf("INSERT INTO log_list (log_name) values ('%s')", $row['Log_name']);
 			my_mysql_query($sql, $this->dest) or die($sql . "\n" . mysql_error() . "\n");
 		}
 	}
+
 	
 	/* Called when a new transaction starts*/
 	function start_transaction() {
