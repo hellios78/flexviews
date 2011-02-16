@@ -21,7 +21,7 @@
 error_reporting(E_ALL);
 ini_set('memory_limit', 1024 * 1024 * 1024);
 
-function my_mysql_query($a, $b=NULL, $debug=false) {
+function my_mysql_query($a, $b=NULL, $debug=true) {
   if($b) {
     $r = mysql_query($a, $b);
   } else { 
@@ -302,7 +302,7 @@ EOREGEX
 				}
 
 				$line = fgets($proc);
-				if(preg_match('%/mysqlbinlog:%', $line)) {
+				if(preg_match('%/mysqlbinlog:|^ERROR:%', $line)) {
 					die('Could not read binary log: ' . $line . "\n");
 				}	
 
@@ -570,6 +570,7 @@ EOREGEX
 	 * one time per event.  If there is a SET INSERT_ID, SET TIMESTAMP, etc
 	 */	
 	function statement($sql) {
+
 		$sql = trim($sql);
 		#TODO: Not sure  if this might be important..
 		#      In general, I think we need to worry about character
@@ -590,7 +591,7 @@ EOREGEX
 		$command = $matches[1];
 		$command = str_replace($this->delimiter,'', $command);
 		$args = $matches[2];
-		
+	
 		switch(strtoupper($command)) {
 			#register change in delimiter so that we properly capture statements
 			case 'DELIMITER':
@@ -823,6 +824,7 @@ EOREGEX
 			#I might have missed something important.  Catch it.	
 			#Maybe this should be E_USER_ERROR
 			default:
+				#if($this->raiseWarnings) trigger_error('Unknown command: ' . $command, E_USER_WARNING);
 				if($this->raiseWarnings) trigger_error('Unknown command: ' . $command, E_USER_WARNING);
 				break;
 		}
@@ -862,6 +864,10 @@ EOREGEX
 			#It is faster to check substr of the line than to run regex
 			#on each line.
 			$prefix=substr($line, 0, 5);
+			if($prefix=="ERROR") {
+				if(preg_match('/Got error/', $line)) 
+				die("error from mysqlbinlog: $line");
+			}
 			$matches = array();
 
 			#Control information from MySQLbinlog is prefixed with a hash comment.
