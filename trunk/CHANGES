@@ -1,3 +1,10 @@
+== 1.6.1 GA ==
+Whats new in Flexviews 1.6.1 GA
+    * This is the first Flexviews GA release!
+    * See UPGRADE if you are running an 1.6.0 RC1 or RC2.  Upgrade from earlier versions is not supported.
+    * Flexviews now automatically adds indexes to changelogs to improve performance
+    * Fixed a regression in flexviews.add_table() which would allow a table without a changelog to be added to an INCREMENTAL view 
+
 == 1.6.0RC2 ==
 Whats new in Flexviews 1.6.0RC2
     * This release is a performance and bug fix release, there are no new features.
