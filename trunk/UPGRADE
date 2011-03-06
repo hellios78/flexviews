@@ -1,14 +1,6 @@
 If you are running 1.6.0.RC1, execute upgrade.sql
-IF YOU UPGRADE FROM 1.6.0RC1 THE YOU DO NOT HAVE TO REBUILD YOUR VIEWS
+IF YOU UPGRADE FROM AN EARLIER 1.6.0 RC, THEN YOU DO NOT HAVE TO REBUILD YOUR VIEWS
 
-
-You may also upgrade from 1.5.3b.  
-
-Execute upgrade_153.sql as the root user:
-
-mysql -uroot < upgrade_153.sql
- 
-YOU MUST DISABLE AND re-ENABLE views if upgrading from 1.5.3b
-
+Upgrade from versions earlier than 1.6.0.RC1 is not supported.
 
 Report any problems to the bug tracker.
