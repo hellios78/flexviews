@@ -362,9 +362,9 @@ EOREGEX
 	function initialize_dest() {
 		#my_mysql_query("SELECT GET_LOCK('flexcdc::SOURCE_LOCK::" . $this->server_id . "',15)") or die("COULD NOT OBTAIN LOCK\n");
 		mysql_select_db($this->mvlogDB) or die('COULD NOT CHANGE DATABASE TO:' . $this->mvlogDB . "\n");
-		my_mysql_query("BEGIN;", $this->dest) or die(mysql_error());
 		$stmt = my_mysql_query("SET SQL_LOG_BIN=0", $this->dest);
 		if(!$stmt) die(mysql_error());
+		my_mysql_query("BEGIN;", $this->dest) or die(mysql_error());
 
 		$stmt = my_mysql_query("select @@max_allowed_packet", $this->dest);
 		$row = mysql_fetch_array($stmt);
