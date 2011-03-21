@@ -26,4 +26,5 @@
   * pcntl extension 
   * MySQL extension
 
+  PHP is required for FlexCDC, the binary log reading change data capture tool included in Flexviews.
   
