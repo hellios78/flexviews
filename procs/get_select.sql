@@ -65,18 +65,25 @@ selectLoop: LOOP
     SET v_select_list = '';    
   END IF;    
 
-  SET v_mview_alias_prefixed = v_mview_alias;
+  IF SUBSTR(v_mview_alias,1,1) != '`' THEN
+     SET v_mview_alias = CONCAT('`',v_mview_alias,'`');
+  END IF;
 
   IF v_prefix IS NOT NULL AND v_prefix != '' THEN
     SET v_mview_alias_prefixed = CONCAT(v_prefix, '.', v_mview_alias);
   END IF;
+
+  SET v_mview_alias_prefixed = v_mview_alias;
+
 
 --  IF v_mode = 'LOG' THEN
 --    SET v_mview_expression = CONCAT('(IFNULL(', IF(v_mview_expression = '*', 1, v_mview_expression), ', 0))');
 --  ELSE 
     SET v_mview_expression = CONCAT('(', v_mview_expression, ')');
 --  END IF;
+
   IF v_mode = 'CREATE' THEN      
+
       IF v_mview_expr_type = 'GROUP' OR v_mview_expr_type = 'COLUMN' THEN
         SET v_mview_expr_type = '';
       ELSE 
