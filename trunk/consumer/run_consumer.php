@@ -1,4 +1,6 @@
 <?php
+ini_set('output_buffering',false);
+if (is_resource(STDIN)) fclose(STDIN);
 require_once('include/flexcdc.php');
 require_once('Console/Getopt.php');
 declare(ticks = 1);
@@ -9,7 +11,7 @@ function sig_handler($signo)
      switch ($signo) {
          case SIGTERM:
          case SIGHUP:
-	     exit(0);
+	     die1(0);
      }
 }
 
@@ -52,7 +54,12 @@ if(!empty($params['ini'])) {
 	$settings = @parse_ini_file($params['ini'], true);
 }
 
+if(!empty($settings['flexcdc']['error_log'])) $ERROR_FILE=$settings['flexcdc']['error_log']; else $ERROR_FILE="flexcdc.err";		
+$ERROR_FILE = fopen($ERROR_FILE, 'w') or die1("could not open the error log for writing");
+
 if(in_array('daemon', array_keys($params))) {
+	if (is_resource(STDERR)) fclose(STDERR);
+	if (is_resource(STDOUT)) fclose(STDOUT);
 	$pid = pcntl_fork();
 	if($pid == -1) {
 		die('Could not fork a new process!\n');
@@ -62,11 +69,6 @@ if(in_array('daemon', array_keys($params))) {
 		pcntl_signal(SIGTERM, "sig_handler");
 		pcntl_signal(SIGHUP,  "sig_handler");
 
-		if(!empty($settings['flexcdc']['error_log'])) $ERROR_FILE=$settings['flexcdc']['error_log']; else $ERROR_FILE="flexcdc.err";		
-
-		$ERROR_FILE = fopen($ERROR_FILE, 'w') or die1("could not open the error log for writing");
-		if (is_resource(STDOUT)) fclose(STDOUT);
-		if (is_resource(STDERR)) fclose(STDERR);
 	} else {
 		#return control to the shell
 		exit(0);
