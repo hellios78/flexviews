@@ -1,5 +1,6 @@
 <?php
 require_once('Console/Getopt.php');
+require_once('include/flexcdc.php');
 
 function &get_commandline() {
 
@@ -8,7 +9,7 @@ function &get_commandline() {
         array_shift($args);
 
         $shortOpts = 'h::v::';
-        $longOpts  = array('ini=');
+        $longOpts  = array('ini=','force==');
 
         $params = $cg->getopt2($args, $shortOpts, $longOpts);
         if (PEAR::isError($params)) {
@@ -33,13 +34,12 @@ if(!empty($params['ini'])) {
 	$settings = @parse_ini_file($params['ini'], true);
 }
 
-require_once('include/flexcdc.php');
 $cdc = new FlexCDC($settings);
 
 #this will read settings from the INI file and initialize
 #the database and capture the source master position
 echo "setup starting\n";
-$cdc->setup(true);
+$cdc->setup(in_array('force',array_keys($params)));
 echo "setup completed\n";
 
 ?>

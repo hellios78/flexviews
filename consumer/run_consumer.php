@@ -6,7 +6,7 @@ function sig_handler($signo)
      switch ($signo) {
          case SIGTERM:
          case SIGHUP:
-	     exit;
+	     exit(0);
      }
 }
 
@@ -61,7 +61,7 @@ if(in_array('daemon', array_keys($params))) {
 		pcntl_signal(SIGHUP,  "sig_handler");
 	} else {
 		#return control to the shell
-		exit();
+		exit(0);
 	}
 }
 
@@ -73,7 +73,8 @@ if(!empty($params['pid'])) {
 		$ps = `ps -p$pid`;
 
 		if(preg_match('/php/i',$ps)) {
-			die("Already running!\n");
+			echo("Already running!\n");
+			exit(1000);
 		} else {
 			echo "Stale lockfile detected.\n";
 		}
