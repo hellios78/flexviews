@@ -1,3 +1,4 @@
+#summary This page lists the SQL features which are supported by incrementally refreshable materialized views.
 #labels Phase-Implementation,Featured
 = Supported SQL operations =
 == This list applies to incrementally refreshable materialized views ==
