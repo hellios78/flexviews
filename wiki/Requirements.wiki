@@ -1,4 +1,4 @@
-#summary This page lists the minimum MySQL requirements for MySQL
+#summary This page lists the minimum system requirements for Flexviews
 #labels Phase-Requirements,Featured
 
 = MySQL Requirements =
