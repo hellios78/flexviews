@@ -34,6 +34,15 @@ raise_warnings=false
 ;Bulk insertion inserts all changes in a transaction as one big INSERT statement.
 bulk_insert=true
 
+;The next two variables control the amount of time that FlexCDC spends sleeping between invocations of mysqlbinlog.
+;In order to avoid putting excessive load on the master, FlexCDC progressively backs off when it detects no changes
+;from the master.  By default it will back off in increments of .25 seconds up to five seconds, at which point it
+;will no longer increase the wait time any more.  The downside of this setting is that it can make incremental 
+;refresh slower because the refresh process may have to wait for FlexCDC to wake and and process the changes that it
+;recently committed.
+sleep_increment=.25
+sleep_maximum=5
+
 ;The SOURCE is where the change logs are read from.  This does not have to be the same as the local machine.
 ;this user requires "grant replication client,replication slave"
 [source]
