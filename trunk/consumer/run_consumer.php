@@ -1,5 +1,8 @@
 <?php
+require_once('include/flexcdc.php');
+require_once('Console/Getopt.php');
 declare(ticks = 1);
+$ERROR_FILE=false;
 
 function sig_handler($signo)
 {
@@ -10,7 +13,6 @@ function sig_handler($signo)
      }
 }
 
-require_once('Console/Getopt.php');
 #
 #if(!function_exists('pcntl_fork')) {
 #	function pcntl_fork() {
@@ -59,6 +61,12 @@ if(in_array('daemon', array_keys($params))) {
 	        #below will be daemonized
 		pcntl_signal(SIGTERM, "sig_handler");
 		pcntl_signal(SIGHUP,  "sig_handler");
+
+		if(!empty($settings['flexcdc']['error_log'])) $ERROR_FILE=$settings['flexcdc']['error_log']; else $ERROR_FILE="flexcdc.err";		
+
+		$ERROR_FILE = fopen($ERROR_FILE, 'w') or die1("could not open the error log for writing");
+		if (is_resource(STDOUT)) fclose(STDOUT);
+		if (is_resource(STDERR)) fclose(STDERR);
 	} else {
 		#return control to the shell
 		exit(0);
@@ -82,8 +90,13 @@ if(!empty($params['pid'])) {
 	file_put_contents($params['pid'], getmypid());
 }
 
+if(empty($settings['flexcdc']['error_log'])) {
+	$error_log = "flexcdc.err";  
+} else {
+	$error_log = $settings['flexcdc']['error_log'];
+}
 
-require_once('include/flexcdc.php');
+
 $cdc = new FlexCDC($settings);
 #capture changes forever (-1):
 $cdc->capture_changes(-1);
