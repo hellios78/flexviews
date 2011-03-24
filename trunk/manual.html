@@ -59,30 +59,9 @@
 
 <p> A NOTE ABOUT DATABASES
  Flexviews must be installed into the `flexviews` schema.  FlexCDC must be configured to use the `flexviews` schema as well.
- This is because the stored procedures must know where to find the Flexviews metadata, and an absolute reference to schema.table is
- the only safe way to avoid conflicts between the current default schema and the Flexviews schema.  This is a shortcoming of MySQL
+ This is because the stored procedures must know where to find the Flexviews metadata.  This is a shortcoming of MySQL
  stored procedures.  Some day in the future, there will be a 'make' step that allows a global search/replace to switch the name
  `flexviews` to another name, but for now, you MUST install the tables and stored procedures in the `flexviews` schema.
-</p>
-
-<p> A NOTE ABOUT UPGRADES
- There is no upgrade script currently.  Please check future releases for more information about upgrading to that release.
- If you are using an older version of Flexviews, consider disabling all views, dropping the `flexviews` schema, and then 
- installing from scratch.  
-</p>
-
-<p> MAJOR CHANGES IN THIS RELEASE
- * FlexCDC is completely rewritten as a PHP class and includes unit tests
- * New documentation built from RoboDOC comments embedded in the SQL stored procedures
- * Support for auto-changelog mode in FlexCDC, so table change logs do not have to be created manually with flexviews.<a href="#robo1">create_mvlog</a>. Note that you can elect not to use auto-changelog mode and instead manually register table changelogs with flexviews.<a href="#robo1">create_mvlog</a>(schema,table)
- * New Flexviews website with an online tool to convert SQL statements into Flexviews SQL_API calls.
-</p>
-
-<p> COMING SOON
- * Flexviews test suite!
- * Autocleanup of changelog records which are no longer needed.  The old mvlog_autocleanup script has not worked since the introduction of the external consumer.
- * Examples!
-
 </p>
 
 <p> Quick Overview
