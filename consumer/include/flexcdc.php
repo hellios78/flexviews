@@ -26,27 +26,33 @@ The exit/die() functions normally exit with error code 0 when a string is passed
 We want to exit with error code 1 when a string is passed in.
 */
 function die1($error = 1,$error2=1) {
-  if(is_string($error)) { 
-    echo $error . "\n";
-    exit($error2);
-  } else {
-    exit($error);
-  }
+	if(is_string($error)) { 
+		echo1($error . "\n");
+		exit($error2);
+	} else {
+		exit($error);
+	}
+}
+
+function echo1($message) {
+	global $ERROR_FILE;
+	fputs(isset($ERROR_FILE) && is_resource($ERROR_FILE) ? $ERROR_FILE : STDERR, $message);
+
 }
 
 function my_mysql_query($a, $b=NULL, $debug=true) {
-  if($b) {
-    $r = mysql_query($a, $b);
-  } else { 
-    $r = mysql_query($a);
-  }
+	if($b) {
+	$r = mysql_query($a, $b);
+		} else { 
+	$r = mysql_query($a);
+	}
 
-  if(!$r) {
-    echo "SQL_ERROR IN STATEMENT:\n$a\n";
-    if($debug) print_r(debug_backtrace());
-  }
+	if(!$r) {
+		echo1("SQL_ERROR IN STATEMENT:\n$a\n");
+		if($debug){ print_r(debug_backtrace(),$pr); echo1($pr); }
+	}
 
-  return $r;
+	return $r;
 }
 
 class FlexCDC {
@@ -364,7 +370,9 @@ EOREGEX
 					$sleep_time=0;
 				} else {
 					$sleep_time += $this->settings['flexcdc']['sleep_increment'];
-					sleep($sleep_time > $this->settings['flexcdc']['sleep_maximum'] ? $this->settings['flexcdc']['sleep_maximum'] : $sleep_time);
+					$sleep_time = $sleep_time > $this->settings['flexcdc']['sleep_maximum'] ? $this->settings['flexcdc']['sleep_maximum'] : $sleep_time;
+					#echo1('sleeping:' . $sleep_time . "\n");
+					sleep($sleep_time);
 				}
 			}
 

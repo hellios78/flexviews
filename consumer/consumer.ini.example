@@ -5,6 +5,10 @@ mysqlbinlog=/usr/bin/mysqlbinlog
 ;The database in which to write changelogs and in which to store the state tables (see the next section).  If you are using Flexviews, then you MUST NOT change this value.
 database=flexviews
 
+;where to write error messages (default is the current directory) 
+;must be full path and filename otherwise
+error_log=flexcdc.err
+
 ;the following three tables store the metadata information for FlexCDC including at which binary log file/position to which binary logs have been processed. You MUST NOT include database names on these tables.  They will all be placed into the databasespecified above.  If you are using flexcdc for something OTHER THAN FLEXVIEWS then you can remap the table names which FlexCDC uses to alternative names.  DO NOT CHANGE THESE VALUES IF YOU ARE USING FLEXVIEWS or if you don't have a very good reason to change them.
 
 binlog_consumer_status=binlog_consumer_status
