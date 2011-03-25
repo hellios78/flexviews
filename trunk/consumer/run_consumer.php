@@ -5,6 +5,8 @@ require_once('include/flexcdc.php');
 require_once('Console/Getopt.php');
 declare(ticks = 1);
 $ERROR_FILE=false;
+pcntl_signal(SIGTERM, "sig_handler");
+pcntl_signal(SIGHUP,  "sig_handler");
 
 function sig_handler($signo)
 {
