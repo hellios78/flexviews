@@ -423,6 +423,7 @@ EOREGEX
 		$row = mysql_fetch_array($stmt);
 		$this->max_allowed_packet = $row[0];	
 
+		echo1("Max_allowed_packet: " . $this->max_allowed_packet . "\n");
 		
 	}
 	
@@ -603,7 +604,7 @@ EOREGEX
 					if($valList) $valList .= ",\n";	
 					$valList .= "($mode, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
 					$bytes = strlen($valList) + strlen($sql);
-					$allowed = floor($bytes * .99);  #allowed len is 99% of max_allowed_packet	
+					$allowed = floor($this->max_allowed_packet * .9);  #allowed len is 90% of max_allowed_packet	
 					if($bytes > $allowed) {
 						my_mysql_query($sql . $valList, $this->dest) or die1("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 						$valList = "";
@@ -1059,6 +1060,22 @@ EOREGEX
 		#return the last line so that we can process it in the parent body
 		#you can't seek backwards in a proc stream...
 		return $line;
+	}
+
+	function drop_mvlog($schema, $table) {
+
+		#will implicit commit	
+		$sql = "DROP TABLE IF EXISTS " . $this->mvlogDB . "." . "`%s_%s`";	
+		$sql = sprintf($sql, mysql_real_escape_string($schema), mysql_real_escape_string($table));
+		if(!my_mysql_query($sql)) return false;
+
+		my_mysql_query("BEGIN", $this->dest);
+		$sql = "DELETE FROM " . $this->mvlogDB . ". " . $this->mvlogs . " where table_schema = '%s' and table_name = '%s'";	
+		$sql = sprintf($sql, mysql_real_escape_string($schema), mysql_real_escape_string($table));
+		if(!my_mysql_query($sql)) return false;
+
+		return my_mysql_query('commit');
+
 	}
 
 	#AUTOPORTED FROM FLEXVIEWS.CREATE_MVLOG() w/ minor modifications for PHP
