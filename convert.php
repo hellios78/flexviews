@@ -88,10 +88,10 @@ function process_parsed($p,$default_db = "") {
 			$clause = "NULL";
 			$first=0;
 		} else {
-			$clause = $f['ref_type'] . ' ' . @mysql_escape_string($f['ref_clause']);
+			$clause = "'" . $f['ref_type'] . ' ' . @mysql_escape_string($f['ref_clause']) . "'";
 		}
 
-		$output .= "CALL flexviews.add_table(@mvid,'{$db}','{$table},'{$f['alias']}','{$clause}');\n" ;
+		$output .= "CALL flexviews.add_table(@mvid,'{$db}','{$table},'{$f['alias']}',{$clause});\n" ;
 
 	}
 
