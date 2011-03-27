@@ -6,6 +6,21 @@ if(!defined('HAVE_PHP_SQL_PARSER')) {
 }
 $parser=new PHPSQLParser();
 
+if(count($argv) == 1) {
+echo "usage: \n";
+echo "php " . $argv[0] .  " [schema] < inserts.sql\n";
+echo "-------------------------------------\n
+This script expects a file to be redirected to STDIN. 
+
+It expects the file to be a set of INSERT ... SELECT statements.\n
+Each statement should be terminated by a semicolon (;)
+
+The script takes one commandline argument. This argument specifies a schema.  The specified schema is used for:
+A) The location into which to place the materialized view(s)
+B) The location to use for tables that are not explicitly prefixed with a schema name in the FROM clause of the SELECT statement.\n\n";
+exit;
+}
+
 $sql = file_get_contents('php://stdin');
 
 process_sql($sql);
