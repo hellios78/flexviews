@@ -96,7 +96,7 @@ function process_parsed($p,$default_db = "") {
 	}
 
 	$where="";
-	foreach($p['WHERE'] as $w) {
+	if(!empty($p['WHERE'])) foreach($p['WHERE'] as $w) {
 		$where .= $w['base_expr'] . ' ';
 	}
 	$where=trim($where);
