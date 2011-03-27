@@ -120,6 +120,8 @@ function process_parsed($p,$default_db = "") {
 function process_sql($sql, $default_db="", $default_table="", $debug=false) {
 	global $parser;
 
+	$sql = preg_replace(array('/CREATE\s*TABLE\s*/','/`/'), array('INSERT INTO ',''),$sql);
+
         $queries = explode(';', $sql);
         $new_queries = array();
         foreach($queries as $query) {
