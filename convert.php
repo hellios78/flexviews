@@ -23,7 +23,7 @@ exit;
 
 $sql = file_get_contents('php://stdin');
 
-process_sql($sql);
+process_sql($sql,@mysql_escape_string($argv[1]) );
 
 function process_parsed($p,$default_db = "") {
 	$q = new StdClass();
@@ -149,8 +149,8 @@ function process_sql($sql, $default_db="", $default_table="", $debug=false) {
 		} else {
 			$table = $default_table;
 		}
-
-                $output .= "CALL flexviews.create({$default_db}, {$table}, 'INCREMENTAL');\n";
+		$table = trim($table,'`');
+                $output .= "CALL flexviews.create('{$default_db}', '{$table}', 'INCREMENTAL');\n";
                 $output .= "SET @mvid := LAST_INSERT_ID();\n";
 
 		$output .= process_parsed($p,$default_db);
