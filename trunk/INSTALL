@@ -12,7 +12,7 @@ Installation:
  * if no errors, then proceed
 
  * run the consumer (there is a PHP file provided)
- *  php consumer/run_consumer.php &
+ * sh consumer_safe.sh --ini=consumer.ini & 
 
  * You must leave the consumer running at all times!
 
@@ -20,6 +20,7 @@ Installation:
 
  * Source the install.sql file
    \. install.sql
+
 
 
 
