@@ -151,8 +151,17 @@ function process_sql($sql, $default_db="", $default_table="", $debug=false) {
 		} else {
 			$table = $default_table;
 		}
-		$table = trim($table,'`');
-                $output .= "CALL flexviews.create('{$default_db}', '{$table}', 'INCREMENTAL');\n";
+
+		$info=explode('.',$table);
+
+		if(count($info) == 1) {
+			$db = $default_db;
+			$table = $info[0];
+		} else {
+			$db = $info[0];
+			$table = $info[1];
+		}
+                $output .= "CALL flexviews.create('{$db}', '{$table}', 'INCREMENTAL');\n";
                 $output .= "SET @mvid := LAST_INSERT_ID();\n";
 
 		$output .= process_parsed($p,$default_db);
