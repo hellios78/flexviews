@@ -90,8 +90,8 @@ function process_parsed($p,$default_db = "") {
 		} else {
 			$clause = "'" . $f['ref_type'] . ' ' . @mysql_escape_string($f['ref_clause']) . "'";
 		}
-
-		$output .= "CALL flexviews.add_table(@mvid,'{$db}','{$table},'{$f['alias']}',{$clause});\n" ;
+		$table = str_replace('.','_',$table);
+		$output .= "CALL flexviews.add_table(@mvid,'{$db}','{$table}','{$f['alias']}',{$clause});\n" ;
 
 	}
 
@@ -120,7 +120,7 @@ function process_parsed($p,$default_db = "") {
 function process_sql($sql, $default_db="", $default_table="", $debug=false) {
 	global $parser;
 
-	$sql = preg_replace(array('/CREATE\s*TABLE\s*/','/`/'), array('INSERT INTO ',''),$sql);
+	$sql = preg_replace(array('/CREATE\s*TABLE\s*/i','/`/'), array('INSERT INTO ',''),$sql);
 
         $queries = explode(';', $sql);
         $new_queries = array();
