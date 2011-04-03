@@ -49,7 +49,7 @@ function my_mysql_query($a, $b=NULL, $debug=true) {
 
 	if(!$r) {
 		echo1("SQL_ERROR IN STATEMENT:\n$a\n");
-		if($debug){ print_r(debug_backtrace(),$pr); echo1($pr); }
+		if($debug){ $pr=print_r(debug_backtrace(),true); echo1($pr); }
 	}
 
 	return $r;
@@ -754,7 +754,7 @@ EOREGEX
 					my_mysql_query($sql, $this->dest) or die1($sql . "\n" . mysql_error($this->dest) . "\n");
 					
 					$sql = 'RENAME TABLE ' . $clause;
-					my_mysql_query($sql, $this->dest) or die1('DURING RENAME:\n' . $new_sql . "\n" . mysql_error($this->dest) . "\n");
+					@my_mysql_query($sql, $this->dest);# or die1('DURING RENAME:\n' . $new_sql . "\n" . mysql_error($this->dest) . "\n");
 					my_mysql_query('commit', $this->dest);					
 				
 					$this->mvlogList = array();
