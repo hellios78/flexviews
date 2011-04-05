@@ -97,9 +97,6 @@ BEGIN
    -- order of GROUP expressions in the table which may not be ideal for selecting, so care should be 
    -- taken if a PRIMARY KEY is not provided to present the GROUP expressions in a suitable order..
    
-   -- note: special refresh REQUIRES a PRIMARY KEY definition and an error will be raised if one has
-   -- not been provided
-
    SET v_keys = flexviews.get_keys(v_mview_id);
 
    IF v_keys != "" THEN
