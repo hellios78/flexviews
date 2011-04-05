@@ -42,7 +42,7 @@ END;;
 
 DROP PROCEDURE IF EXISTS flexviews.uow_start;;
 
-CREATE PROCEDURE flexviews.uow_start(OUT v_uow_id BIGINT)
+CREATE PROCEDURE DEFINER=flexviews@localhost flexviews.uow_start(OUT v_uow_id BIGINT)
 BEGIN
 DECLARE v_deadlocked BOOLEAN DEFAULT FALSE;
 
