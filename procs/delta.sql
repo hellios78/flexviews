@@ -37,6 +37,7 @@ DECLARE v_mview_refresh_type TEXT;
 DECLARE v_cur_row INT;
 DECLARE v_row_count INT;
 DECLARE v_cnt_column TEXT;
+DECLARE v_only_agg BOOLEAN DEFAULT FALSE;
 
 SELECT mview_name,
        mview_schema,
@@ -173,14 +174,30 @@ ELSE -- this mview has aggregates
 
   END IF;
 
+  IF flexviews.has_aggregates(v_mview_id) THEN
+    SELECT COUNT(*) = 0 
+      INTO v_only_agg
+      from flexviews.mview_expression
+     where mview_id = v_mview_id
+       and (mview_expr_type = 'GROUP' or mview_expr_type = 'COLUMN');
+   
+  END IF;
 
-  SET v_sql = CONCAT('SELECT ', get_delta_aliases(v_mview_id, '', FALSE), ' ',
+  IF v_only_agg THEN
+    SET v_sql = 'SELECT 1,';
+  ELSE
+    SET v_sql = 'SELECT ';
+  END IF;
+
+
+  SET v_sql = CONCAT(v_sql, get_delta_aliases(v_mview_id, '', FALSE), ' ',
                      '  FROM ', v_delta_table, ' as x_select_',
                      ' WHERE uow_id > ', v_refreshed_to_uow_id,
                      '   AND uow_id <= ', v_until_uow_id, 
                      '   AND dml_type IS NOT NULL ');
 
   SET v_sql = get_insert(v_mview_id, v_sql);
+
   CALL flexviews.rlog(v_sql);
   SET @v_sql = v_sql;
   PREPARE insert_stmt FROM @v_sql;
@@ -956,6 +973,7 @@ DECLARE v_mview_alias TEXT;
 DECLARE v_mview_expression TEXT;
 DECLARE v_set_clause TEXT DEFAULT '';
 DECLARE v_done BOOLEAN DEFAULT FALSE;
+DECLARE v_only_agg BOOLEAN DEFAULT FALSE;
 DECLARE cur_expr CURSOR 
 FOR
 SELECT mview_alias, 
@@ -990,10 +1008,28 @@ SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, '\n',
 'SELECT * FROM (', v_select_stmt ,') x_select_ \n',
 "ON DUPLICATE KEY UPDATE\n");
 */
-SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, '\n', 
+
+IF flexviews.has_aggregates(v_mview_id) THEN
+  SET v_only_agg = FALSE;
+  SELECT COUNT(*) = 0
+    INTO v_only_agg
+    from flexviews.mview_expression
+   where mview_id = v_mview_id
+     and (mview_expr_type = 'GROUP' or mview_expr_type = 'COLUMN');
+END IF;
+
+IF v_only_agg THEN
+  SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, '\n', 
+'(mview$pk,',flexviews.get_delta_aliases(v_mview_id, '', FALSE),')\n(',
+v_select_stmt,')\n',
+"ON DUPLICATE KEY UPDATE\n");
+ELSE 
+  SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, '\n', 
 '(',flexviews.get_delta_aliases(v_mview_id, '', FALSE),')\n(',
 v_select_stmt,')\n',
 "ON DUPLICATE KEY UPDATE\n");
+
+END IF;
 
 SET @HERE=1;
 
