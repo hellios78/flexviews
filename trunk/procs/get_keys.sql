@@ -64,6 +64,9 @@ BEGIN
   IF v_mview_expression IS NOT NULL  THEN
         SET v_key_list = CONCAT('PRIMARY KEY ', v_mview_alias, '(', v_mview_expression, ')');
   ELSE
+
+    SET v_mview_expr_type=NULL;
+
     -- NO PRIMARY KEY DEFINED, WE NEED TO SELECT ONE FOR THE USER
     SELECT mview_refresh_type 
       INTO v_mview_refresh_type
@@ -104,11 +107,13 @@ BEGIN
     END LOOP;
 
     IF v_key_list != '' THEN
-      IF v_mview_expr_type = 'GROUP' THEN
+      IF v_mview_expr_type = 'GROUP' OR v_mview_expr_type IS NULL THEN
         SET v_key_list = CONCAT('mview$pk bigint auto_increment primary key,','UNIQUE KEY (', v_key_list, ')');
       ELSE
-        SET v_key_list = CONCAT('KEY (', v_key_list, ')');
+       	SET v_key_list = CONCAT('KEY (', v_key_list, ')');
       END IF;
+    ELSE 
+        SET v_key_list = 'mview$pk bigint auto_increment primary key';
     END IF;
   END IF;
 
