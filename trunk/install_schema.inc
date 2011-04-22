@@ -30,13 +30,13 @@ GRANT/* CREATE, DROP, ALTER, DELETE, INDEX,
    ON flexviews.*
    TO flexviews@localhost;
 
--- THIS GIVES THE flexviews USER SELECT ACCESS TO
--- ALL YOUR TABLES.  THIS MAY NOT BE A GOOD
--- IDEA.  YOU WILL HAVE TO DECIDE.  IF YOU DON'T
--- WANT THIS YOU WILL HAVE TO GRANT EXPLICIT SELECT
--- ACCESS TO THE flexviews USER ON BASE TABLES THAT
--- YOU WANT TO SELECT FROM FOR MATERIALIZED VIEWS
-GRANT USAGE
+-- In the following GRANT, USAGE gives the FLEXVIEWS
+-- user SELECT access to all of your tables. 
+-- You may want to change this to ALL (or the list of grants above)
+-- If you want to create materialized views in databases OTHER than
+-- the 'flexviews' database.
+
+GRANT USAGE/*,ALL*/
    ON *.*
    TO flexviews@localhost;
 

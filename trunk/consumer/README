@@ -46,7 +46,7 @@ I still have to test this.  I'm working on a Flexviews test suite.
 
 Setup 
 -------------------------
-Run setup.php - this will execute FLUSH TABLES WITH READLOCK to ascertain the master position!
+Run setup_flexcdc.php - this will execute FLUSH TABLES WITH READLOCK to ascertain the master position!
 
 Running the consumer:
 php run_consumer.php  (will excute in a loop with a 250ms wait which increases to up to 5 seconds in 250ms increments during periods of inactivity) 

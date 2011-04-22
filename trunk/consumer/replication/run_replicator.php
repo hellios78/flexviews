@@ -14,7 +14,7 @@ require_once('Console/Getopt.php');
 #
 #if(!function_exists('pcntl_fork')) {
 #	function pcntl_fork() {
-#		die("The --daemon option requires the pctnl extension.\n");
+#		die("The --daemon option requires the pcntl extension.\n");
 #	}
 #}
 
