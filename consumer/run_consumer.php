@@ -5,8 +5,10 @@ require_once('include/flexcdc.php');
 require_once('Console/Getopt.php');
 declare(ticks = 1);
 $ERROR_FILE=false;
-pcntl_signal(SIGTERM, "sig_handler");
-pcntl_signal(SIGHUP,  "sig_handler");
+if (function_exists('pcntl_signal')) {
+	pcntl_signal(SIGTERM, "sig_handler");
+	pcntl_signal(SIGHUP,  "sig_handler");
+}
 
 function sig_handler($signo)
 {
@@ -20,7 +22,7 @@ function sig_handler($signo)
 #
 #if(!function_exists('pcntl_fork')) {
 #	function pcntl_fork() {
-#		die("The --daemon option requires the pctnl extension.\n");
+#		die("The --daemon option requires the pcntl extension.\n");
 #	}
 #}
 
