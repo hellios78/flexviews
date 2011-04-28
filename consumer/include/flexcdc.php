@@ -34,8 +34,6 @@ function die1($error = 1,$error2=1) {
 	}
 }
 
-/* echo writes to stdout.  I imagine output buffering could be used
-but instead, just write to a file */
 function echo1($message) {
 	global $ERROR_FILE;
 	fputs(isset($ERROR_FILE) && is_resource($ERROR_FILE) ? $ERROR_FILE : STDERR, $message);
@@ -125,12 +123,6 @@ EOREGEX
 		if(!$settings) {
 			$settings = $this->read_settings();
 		}
-		
-		#the mysqlbinlog command line location may be set in the settings
-		#we will autodetect the location if it is not specified explicitly
-		if(!empty($settings['flexcdc']['mysqlbinlog'])) {
-			$this->cmdLine = $settings['flexcdc']['mysqlbinlog'];
-		} 
 		if(!$this->cmdLine) $this->cmdLine = `which mysqlbinlog`;
 		if(!$this->cmdLine) {
 			die1("could not find mysqlbinlog!",2);
@@ -148,6 +140,12 @@ EOREGEX
 		if(!empty($settings['flexcdc']['mvlogs'])) $this->mvlogs=$settings['flexcdc']['mvlogs'];
 		if(!empty($settings['flexcdc']['binlog_consumer_status'])) $this->binlog_consumer_status=$settings['flexcdc']['binlog_consumer_status'];
 		if(!empty($settings['flexcdc']['mview_uow'])) $this->mview_uow=$settings['flexcdc']['mview_uow'];
+		
+		#the mysqlbinlog command line location may be set in the settings
+		#we will autodetect the location if it is not specified explicitly
+		if(!empty($settings['flexcdc']['mysqlbinlog'])) {
+			$this->cmdLine = $settings['flexcdc']['mysqlbinlog'];
+		} 
 		
 		#build the command line from user, host, password, socket options in the ini file in the [source] section
 		foreach($settings['source'] as $k => $v) {
@@ -598,8 +596,24 @@ EOREGEX
 							
 						}
 						$datatype = $this->table_ordinal_datatype($this->tables[$table]['schema'],$this->tables[$table]['table'],count($row)+1);
+						echo1("DATATYPE: $datatype\n");
+						switch(trim($datatype)) {
+							case 'int':
+									echo1("COL: $col\n");
+								if($col[0] == "-" && strpos($col, '(')) {
+									$col = trim(strstr($col,'('), '()');
+								}
+							break;
 
-						if($datatype=='timestamp') $col = 'from_unixtime(' . $col . ')';
+							case 'timestamp':
+								$col = 'from_unixtime(' . $col . ')';
+							break;
+
+							case 'datetime': 
+								$col = "'" . mysql_real_escape_string(trim($col,"'")) . "'";
+							break;
+						}
+
 						$row[] = $col;
 					}
 
