@@ -49,7 +49,11 @@ function my_mysql_query($a, $b=NULL, $debug=true) {
 
 	if(!$r) {
 		echo1("SQL_ERROR IN STATEMENT:\n$a\n");
-		if($debug){ $pr=print_r(debug_backtrace(),true); echo1($pr); }
+		if($debug) {
+			$pr = mysql_error($b);
+			echo1(print_r(debug_backtrace(),true));
+			echo1($pr);
+		}
 	}
 
 	return $r;
@@ -440,7 +444,7 @@ EOREGEX
 
 
 		$sql = "select @@binlog_format";
-		$stmt = my_mysql_query($sql, $this->dest);
+		$stmt = my_mysql_query($sql, $this->source);
 		$row = mysql_fetch_array($stmt) or die1($sql . "\n" . mysql_error() . "\n");
 
 		if($row[0] != 'ROW') {
