@@ -571,10 +571,10 @@ EOREGEX
 
 	function process_rows() {
 		$i = 0;
-		$valList =  "";
 		
 		
 		while($i<2) {
+			$valList =  "";
 			if ($i==0) {
 				$data = $this->inserts;
 				$mode = 1;
