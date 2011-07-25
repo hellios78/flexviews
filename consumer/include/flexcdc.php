@@ -347,7 +347,7 @@ EOREGEX
 				if ($row['exec_master_log_pos'] < 4) $row['exec_master_log_pos'] = 4;
 				$execCmdLine = sprintf("%s --base64-output=decode-rows -v -R --start-position=%d --stop-position=%d %s", $this->cmdLine, $row['exec_master_log_pos'], $row['master_log_size'], $row['master_log_file']);
 				$execCmdLine .= " 2>&1";
-				#echo  "-- $execCmdLine\n";
+				echo  "-- $execCmdLine\n";
 				$proc = popen($execCmdLine, "r");
 				if(!$proc) {
 					die1('Could not read binary log using mysqlbinlog\n');
@@ -427,7 +427,7 @@ EOREGEX
 		$row = mysql_fetch_array($stmt);
 		$this->max_allowed_packet = $row[0];	
 
-		echo1("Max_allowed_packet: " . $this->max_allowed_packet . "\n");
+		#echo1("Max_allowed_packet: " . $this->max_allowed_packet . "\n");
 		
 	}
 	
@@ -1050,6 +1050,8 @@ EOREGEX
 					$this->row = array();
 				}
 				$mode = 1;
+			} elseif(preg_match('/###\s+@[0-9]+=(-[0-9]*) .*$/', $line, $matches)) {
+				$this->row[] = $matches[1];
 			
 			#Row images are in format @1 = 'abc'
 			#                         @2 = 'def'
