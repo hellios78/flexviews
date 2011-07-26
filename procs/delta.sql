@@ -69,7 +69,7 @@ IF NOT flexviews.has_aggregates(v_mview_id) THEN
   IF flexviews.get_delta_aliases(v_mview_id, '', FALSE) != '' THEN
     SET v_sql = CONCAT('INSERT INTO ',
         v_mview_schema, '.', v_mview_name,
-        ' SELECT ', flexviews.get_delta_aliases(v_mview_id,'',FALSE), 
+        ' SELECT NULL,', flexviews.get_delta_aliases(v_mview_id,'',FALSE), 
         '   FROM ', v_delta_table, 
         ' WHERE dml_type = 1 AND uow_id > ', v_refreshed_to_uow_id,
         '   AND uow_id <= ', v_until_uow_id);
@@ -80,72 +80,21 @@ IF NOT flexviews.has_aggregates(v_mview_id) THEN
     PREPARE insert_stmt from @v_sql;
     EXECUTE insert_stmt; 
     DEALLOCATE PREPARE insert_stmt;
-  END IF;
-  -- DONE WITH INSERTS --
-/*
-  -- DELETE TUPLES FROM THE MV 
-  DROP TEMPORARY TABLE IF EXISTS deletes;
-*/
 
-  SET @v_row_count = 0;
-  SET v_sql = CONCAT("CREATE TEMPORARY TABLE deletes ",
-                    "( dkey int auto_increment primary key ) ",
-                    "AS SELECT *, @v_row_count := @v_row_count + 1 FROM ", v_delta_table, 
-                      " WHERE dml_type = -1 AND uow_id > ", v_refreshed_to_uow_id,
-                        " AND uow_id <= ", v_until_uow_id);
-
-  CALL flexviews.rlog(v_sql);
-
-  SET @v_sql = v_sql;
-  PREPARE create_stmt FROM @v_sql;
-  EXECUTE create_stmt;
-  DEALLOCATE PREPARE create_stmt;
-
-/*
-  SELECT COUNT(*) 
-    INTO v_row_count
-    FROM deletes;
-*/
-
-  IF flexviews.get_delta_aliases(v_mview_id, '', FALSE) != '' AND v_row_count > 0 AND v_row_count IS NOT NULL THEN
-
-    -- MySQL does not support JOIN w/ LIMIT in a DELETE 
-    -- statement.  We are going to work around it with
-    -- a session variable.
-    SET @oneRow = 0;
-    SET @v_sql = '';
-  
+    SET v_sql = CONCAT(' DELETE ', v_mview_schema, '.', v_mview_name, '.*',
+                       '   FROM ', v_mview_schema, '.', v_mview_name,
+                       '   JOIN ', v_mview_schema, '.', v_mview_name, '_delta',
+                       '  USING(', flexviews.get_delta_aliases( v_mview_id, '', FALSE), ')',
+                       ' WHERE dml_type = -1 AND uow_id > ', v_refreshed_to_uow_id,
+                       '   AND uow_id <= ', v_until_uow_id);
+    
     SET @v_sql = v_sql;
-    SET v_cur_row = 1;
-  
-    delLoop: LOOP
-      IF v_cur_row > v_row_count THEN
-        LEAVE delLoop;
-      END IF;
-      -- DELETE FROM (JOIN) doesn't support LIMIT clause or ORDER BY clause
-      -- Work around this by using a SESSION VARIABLE that gets incremented
-      -- for each delete.  This will ensure we only delete ONE row from the
-      -- materialized view for each delta delete, even with duplicated rows 
-      -- in the MV.
-      SET @oneRow = 0; 
-      SET @v_cur_row = v_cur_row;
+    PREPARE delete_stmt from @v_sql;
+    EXECUTE delete_stmt; 
+    DEALLOCATE PREPARE delete_stmt;
 
-      SET v_sql = CONCAT('DELETE ', v_mview_schema, '.', v_mview_name, '.* FROM\n ',
-        v_mview_schema, '.', v_mview_name,
-        ' NATURAL JOIN deletes\n ',
-        ' WHERE deletes.dkey = ', v_cur_row, 
-        ' \n AND CONCAT(', flexviews.get_delta_aliases(v_mview_id, 'deletes',FALSE),  ',1) = ',
-        ' \n     CONCAT(', flexviews.get_delta_aliases(v_mview_id, CONCAT(v_mview_schema,'.', v_mview_name) ,FALSE), ',@oneRow := @oneRow + 1 )\n');
-  
-      CALL flexviews.rlog(v_sql);
-
-      SET @v_sql = v_sql;
-      PREPARE delete_stmt from @v_sql;
-      EXECUTE delete_stmt;
-      DEALLOCATE PREPARE delete_stmt;
-      SET v_cur_row = v_cur_row + 1; 
-    END LOOP; 
   END IF;
+
 ELSE -- this mview has aggregates
   SELECT mview_alias
     INTO v_cnt_column
@@ -380,7 +329,7 @@ END IF;
 SET v_select_clause = flexviews.get_delta_select(v_mview_id, v_method, v_mview_table_id);
 
 SET @delta_select = v_select_clause;
-SET v_select_clause = CONCAT('SELECT (', v_mview_table_alias, '.dml_type * ', v_method, ') as dml_type,', flexviews.get_delta_least_uowid(v_depth), ' as uow_id, NULL as mview$pk ', IF(v_select_clause != '', concat(',', v_select_clause), ''));
+SET v_select_clause = CONCAT('SELECT (', v_mview_table_alias, '.dml_type * ', v_method, ') as dml_type,', flexviews.get_delta_least_uowid(v_depth), ' as uow_id,NULL mview$pk ', IF(v_select_clause != '', concat(',', v_select_clause), ''));
 
 
 SET v_from_clause = flexviews.get_delta_from(v_depth);

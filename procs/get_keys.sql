@@ -107,13 +107,7 @@ BEGIN
     END LOOP;
 
     IF v_key_list != '' THEN
-      IF v_mview_expr_type = 'GROUP' OR v_mview_expr_type IS NULL THEN
-        SET v_key_list = CONCAT('mview$pk bigint auto_increment primary key,','UNIQUE KEY (', v_key_list, ')');
-      ELSE
        	SET v_key_list = CONCAT('KEY (', v_key_list, ')');
-      END IF;
-    ELSE 
-        SET v_key_list = 'mview$pk bigint auto_increment primary key';
     END IF;
   END IF;
 
@@ -159,9 +153,9 @@ BEGIN
     SET v_key_list = CONCAT(v_key_list, 'UNIQUE ', v_mview_alias, '(', v_mview_expression, ')');
   END LOOP;
 
-  IF v_key_list = '' THEN
-    SET v_key_list = CONCAT('mview$pk bigint auto_increment primary key');
-  END IF;
+  -- IF v_key_list = '' THEN
+  --  SET v_key_list = CONCAT('mview$pk bigint auto_increment primary key');
+  -- END IF;
 
   RETURN v_key_list;
 END ;;
