@@ -108,7 +108,12 @@ BEGIN
      SET v_sql = CONCAT(v_sql, ' AS ', v_mview_definition);
    ELSE
      CALL flexviews.ensure_validity(v_mview_id);
-
+     if flexviews.has_aggregates(v_mview_id) THEN 
+       SET @flex_option='';
+     else
+       SET @flex_option='DISTINCT';  -- use a global var
+     end if;
+       
      SET v_sql = CONCAT(v_sql, flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
      SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
      IF flexviews.get_where(v_mview_id) != '' THEN

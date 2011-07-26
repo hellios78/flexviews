@@ -207,7 +207,7 @@ selectLoop: LOOP
 END LOOP;  
 
 -- IF v_mode = 'CREATE' THEN
-  RETURN CONCAT('SELECT NULL as mview$pk, ',v_select_list);
+  RETURN CONCAT('SELECT ',if(@flex_option is NULL,'',@flex_option),' NULL as mview$pk, ',v_select_list);
 -- else
 --  RETURN CONCAT('SELECT , ',v_select_list);
 
