@@ -91,7 +91,7 @@ BEGIN
    SET v_sql = '';
    SET @v_sql = v_sql;
 
-   SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name );
+   SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name,' (mview$pk bigint auto_increment primary key');
    -- Add any definied keys on the table.  This function will automatically provide a suitable primary 
    -- key for the table if no primary key has been manually specified.  This key will be in the column
    -- order of GROUP expressions in the table which may not be ideal for selecting, so care should be 
@@ -100,9 +100,9 @@ BEGIN
    SET v_keys = flexviews.get_keys(v_mview_id);
 
    IF v_keys != "" THEN
-     SET v_sql = CONCAT(v_sql, '(', v_keys,')\n');
+     SET v_sql = CONCAT(v_sql, ',', v_keys,'\n');
    END IF;
-   SET v_sql = CONCAT(v_sql, ' ENGINE=INNODB ');
+   SET v_sql = CONCAT(v_sql, ') ENGINE=INNODB ');
 
    IF v_mview_refresh_type != 'INCREMENTAL' THEN
      SET v_sql = CONCAT(v_sql, ' AS ', v_mview_definition);
@@ -141,7 +141,7 @@ BEGIN
     IF v_mview_refresh_type = 'INCREMENTAL' THEN
       START TRANSACTION;
 
-      SET v_sql = CONCAT('INSERT INTO ', v_mview_schema, '.', v_mview_name, ' ' );
+      SET v_sql = CONCAT('INSERT INTO /*HERE*/', v_mview_schema, '.', v_mview_name, ' ' );
 
       SET v_sql = CONCAT(v_sql, flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
       SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));

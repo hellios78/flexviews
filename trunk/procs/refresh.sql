@@ -127,7 +127,7 @@ IF v_signal_id IS NOT NULL AND v_refreshed_to_uow_id IS NULL THEN
      and dml_type = 1;
 
   IF v_refreshed_to_uow_id IS NULL THEN
-    CALL flexviews.signal('ERROR: SIGNAL ID NOT FOUND');
+    CALL flexviews.signal('ERROR: SIGNAL ID NOT FOUND (FlexCDC consumer is likely behind)');
   END IF;
    
    UPDATE flexviews.mview mv
@@ -157,7 +157,7 @@ END IF;
 -- where the view is possible to be refreshed
 
 IF v_refreshed_to_uow_id IS NULL AND v_mview_refresh_type = 'INCREMENTAL' THEN
-  call flexviews.signal(concat('CONSUMER_IS_BEHIND or specified mview:', v_mview_id, ' does not exist.'));
+  call flexviews.signal(concat('ERROR: SIGNAL_ID not found(FlexCDC is not running or is behind) OR the specified mview:', v_mview_id, ' does not exist.'));
 END IF;
 
 SELECT mview_id
