@@ -60,6 +60,7 @@ BEGIN
     END IF;
   END LOOP;
 
+/*
   -- if this is a child view OR a PK has been explicitly defined
   IF v_mview_expression IS NOT NULL  THEN
         SET v_key_list = CONCAT('PRIMARY KEY ', v_mview_alias, '(', v_mview_expression, ')');
@@ -110,6 +111,7 @@ BEGIN
        	SET v_key_list = CONCAT('KEY (', v_key_list, ')');
     END IF;
   END IF;
+*/
 
   SET v_mview_expr_type = 'KEY';
   SET v_done=FALSE;

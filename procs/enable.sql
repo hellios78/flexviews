@@ -118,7 +118,7 @@ BEGIN
      SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
      IF flexviews.get_where(v_mview_id) != '' THEN
        SET v_sql = CONCAT(v_sql, ' WHERE ', flexviews.get_where(v_mview_id), char(10));
-      END IF;
+     END IF;
 
 
      IF flexviews.get_delta_groupby(v_mview_id) != "" THEN
@@ -185,11 +185,7 @@ BEGIN
       EXECUTE drop_stmt;
       DEALLOCATE PREPARE drop_stmt;
 
-      IF flexviews.get_delta_aliases(v_mview_id, '', TRUE) != '' THEN
-        SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,KEY(uow_id),mview$pk bigint default null, KEY(', flexviews.get_delta_aliases(v_mview_id, '',TRUE) ,'))', char(10));
-      ELSE 
-        SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,KEY(uow_id),mview$pk bigint default null)',char(10));
-      END IF;
+      SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,KEY(uow_id),mview$pk bigint default null)',char(10));
 
       SET v_sql = CONCAT(v_sql, 'ENGINE=INNODB ');
       SET v_sql = CONCAT(v_sql, 'AS ( SELECT * FROM ', v_mview_schema, '.', v_mview_name, ' LIMIT 0)');
