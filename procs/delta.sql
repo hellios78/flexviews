@@ -69,7 +69,7 @@ IF NOT flexviews.has_aggregates(v_mview_id) THEN
   IF flexviews.get_delta_aliases(v_mview_id, '', FALSE) != '' THEN
     SET v_sql = CONCAT('INSERT INTO ',
         v_mview_schema, '.', v_mview_name,
-        ' SELECT NULL,', flexviews.get_delta_aliases(v_mview_id,'',FALSE), 
+        ' SELECT DISTINCT NULL,', flexviews.get_delta_aliases(v_mview_id,'',FALSE), 
         '   FROM ', v_delta_table, 
         ' WHERE dml_type = 1 AND uow_id > ', v_refreshed_to_uow_id,
         '   AND uow_id <= ', v_until_uow_id);
