@@ -88,6 +88,7 @@ function process_parsed($p,$default_db = "") {
 			$clause = "NULL";
 			$first=0;
 		} else {
+			if(strtolower($f['ref_type']) == 'using') $f['ref_clause'] = '(' . $f['ref_clause'] . ')';
 			$clause = "'" . $f['ref_type'] . ' ' . @mysql_escape_string($f['ref_clause']) . "'";
 		}
 		$table = str_replace('.','_',$table);
