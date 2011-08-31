@@ -20,7 +20,7 @@
 SET SQL_MODE = STRICT_TRANS_TABLES;
 
 CREATE DATABASE IF NOT EXISTS flexviews;
-GRANT USAGE ON *.* TO flexviews@localhost identified by 'CHANGEME';
+GRANT ALL ON *.* TO flexviews@localhost identified by 'flexdemo';
 
 GRANT/* CREATE, DROP, ALTER, DELETE, INDEX,
       INSERT, SELECT, UPDATE, TRIGGER, CREATE VIEW,
