@@ -40,7 +40,7 @@ function echo1($message) {
 
 }
 
-function my_mysql_query($a, $b=NULL, $debug=true) {
+function my_mysql_query($a, $b=NULL, $debug=false) {
 	if($debug) echo "$a\n";
 
 	if($b) {
@@ -641,12 +641,10 @@ EOREGEX
 							case 'float':
 							case 'double':
 								if($this->table_ordinal_is_unsigned($this->tables[$table]['schema'],$this->tables[$table]['table'],$pos+1)) {
-									echo "HERE: $col\n";
 									if($col[0] == "-" && strpos($col, '(')) {
 										$col = substr($col, strpos($col,'(')+1, -1);
 									}
 								} else {
-									echo "HERE: $col\n";
 									if(strpos($col,' ')) $col = substr($col,0,strpos($col,' '));
 								}
 							break;
