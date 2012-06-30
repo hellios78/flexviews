@@ -185,7 +185,7 @@ BEGIN
       EXECUTE drop_stmt;
       DEALLOCATE PREPARE drop_stmt;
 
-      SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,KEY(uow_id),mview$pk bigint default null)',char(10));
+      SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,fv$gsn BIGINT, KEY(uow_id,fv$gsn),mview$pk bigint default null)',char(10));
 
       SET v_sql = CONCAT(v_sql, 'ENGINE=INNODB ');
       SET v_sql = CONCAT(v_sql, 'AS ( SELECT * FROM ', v_mview_schema, '.', v_mview_name, ' LIMIT 0)');

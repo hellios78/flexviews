@@ -329,7 +329,8 @@ END IF;
 SET v_select_clause = flexviews.get_delta_select(v_mview_id, v_method, v_mview_table_id);
 
 SET @delta_select = v_select_clause;
-SET v_select_clause = CONCAT('SELECT (', v_mview_table_alias, '.dml_type * ', v_method, ') as dml_type,', flexviews.get_delta_least_uowid(v_depth), ' as uow_id,NULL mview$pk ', IF(v_select_clause != '', concat(',', v_select_clause), ''));
+SET @least_gsn = flexviews.get_delta_least_gsn(v_depth);
+SET v_select_clause = CONCAT('SELECT (', v_mview_table_alias, '.dml_type * ', v_method, ') as dml_type,', flexviews.get_delta_least_uowid(v_depth), ' as uow_id,', @least_gsn ,' as fv$gsn,NULL mview$pk ', IF(v_select_clause != '', concat(',', v_select_clause), ''));
 
 
 SET v_from_clause = flexviews.get_delta_from(v_depth);
@@ -688,6 +689,55 @@ ELSE
 END IF;
 END ;;
 
+DROP FUNCTION IF EXISTS `get_delta_least_gsn` ;;
+
+CREATE DEFINER=flexviews@localhost FUNCTION get_delta_least_gsn (
+  v_depth INT
+) RETURNS TEXT CHARSET latin1
+    READS SQL DATA
+BEGIN  
+DECLARE v_done boolean DEFAULT FALSE;  
+DECLARE v_mview_table_alias TEXT;
+DECLARE v_list TEXT DEFAULT '';
+DECLARE v_delta_cnt INT default 0;
+DECLARE v_mview_id INT;
+DECLARE cur_from CURSOR 
+FOR  
+SELECT mview_table_alias,
+       mview_id
+  FROM flexviews.mview_table t
+  JOIN flexviews.table_list USING (mview_table_id)
+ WHERE depth = v_depth
+   AND uow_id_end IS NOT NULL;
+
+DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
+    SET v_done = TRUE;  
+
+OPEN cur_from;  
+fromLoop: LOOP    
+  FETCH cur_from 
+   INTO v_mview_table_alias,
+        v_mview_id;
+  
+  IF v_done THEN      
+    CLOSE cur_from;      
+    LEAVE fromLoop;    
+  END IF;    
+
+  IF v_list != '' THEN
+    SET v_list = CONCAT(v_list, ',');
+  END IF;
+
+  SET v_list = CONCAT(v_list, v_mview_table_alias, '.fv$gsn');
+  SET v_delta_cnt = v_delta_cnt + 1;
+
+END LOOP;
+IF v_delta_cnt > 1 THEN
+  RETURN CONCAT('LEAST(', v_list,')');
+ELSE
+  RETURN v_list;
+END IF;
+END ;;
 
 DELIMITER ;;
 
