@@ -107,7 +107,7 @@ BEGIN
     CALL flexviews.signal('TABLE NOT EXISTS OR ACCESS DENIED');
   END IF; 
   SET v_sql = CONCAT('CREATE TABLE ', flexviews.get_setting('mvlog_db'), '.', v_mvlog_name, 
-                 '( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
+                 '( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, fv$gsn bigint, ', v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
    
   SET @v_sql = v_sql;
   PREPARE create_stmt from @v_sql;
