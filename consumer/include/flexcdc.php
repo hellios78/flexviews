@@ -40,7 +40,7 @@ function echo1($message) {
 
 }
 
-function my_mysql_query($a, $b=NULL, $debug=true) {
+function my_mysql_query($a, $b=NULL, $debug=false) {
 	if($debug) echo $a;
 
 	if($b) {
@@ -604,7 +604,6 @@ EOREGEX
 						}
 					
 						$datatype = $this->table_ordinal_datatype($this->tables[$table]['schema'],$this->tables[$table]['table'],$pos+1);
-						echo("\nPOS:$pos, DATATYPE:$datatype\n");
 						switch(trim($datatype)) {
 							case 'int':
 							case 'tinyint':
