@@ -40,8 +40,8 @@ function echo1($message) {
 
 }
 
-function my_mysql_query($a, $b=NULL, $debug=false) {
-	if($debug) echo $a;
+function my_mysql_query($a, $b=NULL, $debug=true) {
+	if($debug) echo "$a\n";
 
 	if($b) {
 	$r = mysql_query($a, $b);
@@ -215,6 +215,32 @@ EOREGEX
 		$pos	= mysql_real_escape_string($pos);
 
 		$sql = 'select data_type from information_schema.columns where table_schema="%s" and table_name="%s" and ordinal_position="%s"';
+
+		$sql = sprintf($sql, $this->mvlogDB, $log_name, $pos+4);
+
+		$stmt = my_mysql_query($sql, $this->dest);
+		if($row = mysql_fetch_array($stmt) ) {
+			$cache[$key] = $row[0];	
+			return($row[0]);
+		}
+		return false;
+			
+		
+	}
+
+	public function table_ordinal_is_unsigned($schema,$table,$pos) {
+		/* NOTE: we look at the LOG table to see the structure, because it might be different from the source if the consumer is behind and an alter has happened on the source*/
+		static $cache;
+
+		$key = $schema . $table . $pos;
+		if(!empty($cache[$key])) {
+			return $cache[$key];
+		} 
+
+		$log_name = $schema . '_' . $table;
+		$table  = mysql_real_escape_string($table, $this->dest);
+		$pos	= mysql_real_escape_string($pos);
+		$sql = 'select column_type like "%%unsigned%%" is_unsigned from information_schema.columns where table_schema="%s" and table_name="%s" and ordinal_position=%d';
 
 		$sql = sprintf($sql, $this->mvlogDB, $log_name, $pos+4);
 
@@ -579,7 +605,6 @@ EOREGEX
 	function process_rows() {
 		$i = 0;
 		
-		
 		while($i<2) {
 			$valList =  "";
 			if ($i==0) {
@@ -598,6 +623,7 @@ EOREGEX
 					$row = array();
 					
 					foreach($the_row as $pos => $col) {
+		#				$col = trim($col);
 						if($col[0] == "'") {
 							$col = "'" . mysql_real_escape_string(trim($col,"'")) . "'";
 							
@@ -611,9 +637,17 @@ EOREGEX
 							case 'smallint':
 							case 'bigint':
 							case 'serial':
-								echo1("COL: $col\n");
-								if($col[0] == "-" && strpos($col, '(')) {
-									$col = trim(strstr($col,'('), '()');
+							case 'decimal':
+							case 'float':
+							case 'double':
+								if($this->table_ordinal_is_unsigned($this->tables[$table]['schema'],$this->tables[$table]['table'],$pos+1)) {
+									echo "HERE: $col\n";
+									if($col[0] == "-" && strpos($col, '(')) {
+										$col = substr($col, strpos($col,'(')+1, -1);
+									}
+								} else {
+									echo "HERE: $col\n";
+									if(strpos($col,' ')) $col = substr($col,0,strpos($col,' '));
 								}
 							break;
 
@@ -1059,9 +1093,9 @@ EOREGEX
 					$this->row = array();
 				}
 				$mode = 1;
-			} elseif(preg_match('/###\s+@[0-9]+=(-[0-9]*) .*$/', $line, $matches)) {
+			/*} elseif(preg_match('/###\s+@[0-9]+=(-[0-9]*) .*$/', $line, $matches)) {
 				$this->row[] = $matches[1];
-			
+			*/
 			#Row images are in format @1 = 'abc'
 			#                         @2 = 'def'
 			#Where @1, @2 are the column number in the table	
