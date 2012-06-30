@@ -41,6 +41,8 @@ function echo1($message) {
 }
 
 function my_mysql_query($a, $b=NULL, $debug=true) {
+	if($debug) echo $a;
+
 	if($b) {
 	$r = mysql_query($a, $b);
 		} else { 
@@ -206,7 +208,7 @@ EOREGEX
 		$key = $schema . $table . $pos;
 		if(!empty($cache[$key])) {
 			return $cache[$key];
-		}
+		} 
 
 		$log_name = $schema . '_' . $table;
 		$table  = mysql_real_escape_string($table, $this->dest);
@@ -214,7 +216,7 @@ EOREGEX
 
 		$sql = 'select data_type from information_schema.columns where table_schema="%s" and table_name="%s" and ordinal_position="%s"';
 
-		$sql = sprintf($sql, $this->mvlogDB, $log_name, $pos+3);
+		$sql = sprintf($sql, $this->mvlogDB, $log_name, $pos+4);
 
 		$stmt = my_mysql_query($sql, $this->dest);
 		if($row = mysql_fetch_array($stmt) ) {
@@ -419,6 +421,7 @@ EOREGEX
 		#my_mysql_query("SELECT GET_LOCK('flexcdc::SOURCE_LOCK::" . $this->server_id . "',15)") or die1("COULD NOT OBTAIN LOCK\n");
 		mysql_select_db($this->mvlogDB) or die1('COULD NOT CHANGE DATABASE TO:' . $this->mvlogDB . "\n");
 		my_mysql_query("commit;", $this->dest);
+		$stmt = my_mysql_query("SET SQL_MODE=STRICT_ALL_TABLES");
 		$stmt = my_mysql_query("SET SQL_LOG_BIN=0", $this->dest);
 		if(!$stmt) die1(mysql_error());
 		my_mysql_query("BEGIN;", $this->dest) or die1(mysql_error());
@@ -542,7 +545,7 @@ EOREGEX
 				$col = mysql_real_escape_string($col);
 				$row[] = "'$col'";
 			}
-			$valList = "(-1, @fv_uow_id, {$this->binlogServerId}," . implode(",", $row) . ")";
+			$valList = "(-1, @fv_uow_id, {$this->binlogServerId},flexviews.gen_gsn()," . implode(",", $row) . ")";
 			$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
 			my_mysql_query($sql, $this->dest) or die1("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 		}
@@ -567,7 +570,7 @@ EOREGEX
 				$col = mysql_real_escape_string($col);
 				$row[] = "'$col'";
 			}
-			$valList = "(1, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
+			$valList = "(1, @fv_uow_id, $this->binlogServerId,flexviews.gen_gsn()," . implode(",", $row) . ")";
 			$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
 			my_mysql_query($sql, $this->dest) or die1("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 		}
@@ -594,16 +597,22 @@ EOREGEX
 				foreach($rows as $the_row) {	
 					$row = array();
 					
-					foreach($the_row as $col) {
+					foreach($the_row as $pos => $col) {
 						if($col[0] == "'") {
 							$col = "'" . mysql_real_escape_string(trim($col,"'")) . "'";
 							
 						}
-						$datatype = $this->table_ordinal_datatype($this->tables[$table]['schema'],$this->tables[$table]['table'],count($row)+1);
-						echo1("DATATYPE: $datatype\n");
+					
+						$datatype = $this->table_ordinal_datatype($this->tables[$table]['schema'],$this->tables[$table]['table'],$pos+1);
+						echo("\nPOS:$pos, DATATYPE:$datatype\n");
 						switch(trim($datatype)) {
 							case 'int':
-									echo1("COL: $col\n");
+							case 'tinyint':
+							case 'mediumint':
+							case 'smallint':
+							case 'bigint':
+							case 'serial':
+								echo1("COL: $col\n");
 								if($col[0] == "-" && strpos($col, '(')) {
 									$col = trim(strstr($col,'('), '()');
 								}
@@ -622,7 +631,7 @@ EOREGEX
 					}
 
 					if($valList) $valList .= ",\n";	
-					$valList .= "($mode, @fv_uow_id, $this->binlogServerId," . implode(",", $row) . ")";
+					$valList .= "($mode, @fv_uow_id, $this->binlogServerId,flexviews.gen_gsn()," . implode(",", $row) . ")";
 					$bytes = strlen($valList) + strlen($sql);
 					$allowed = floor($this->max_allowed_packet * .9);  #allowed len is 90% of max_allowed_packet	
 					if($bytes > $allowed) {
@@ -844,7 +853,7 @@ EOREGEX
 						#skip clauses we do not want to apply to mvlogs
 						if(!preg_match('/^ORDER|^DISABLE|^ENABLE|^ADD CONSTRAINT|^ADD FOREIGN|^ADD FULLTEXT|^ADD SPATIAL|^DROP FOREIGN|^ADD KEY|^ADD INDEX|^DROP KEY|^DROP INDEX|^ADD PRIMARY|^DROP PRIMARY|^ADD PARTITION|^DROP PARTITION|^COALESCE|^REORGANIZE|^ANALYZE|^CHECK|^OPTIMIZE|^REBUILD|^REPAIR|^PARTITION|^REMOVE/i', $clause)) {
 							
-							#we have three "header" columns in the mvlog.  Make it so that columns added as
+							#we have four "header" columns in the mvlog.  Make it so that columns added as
 							#the FIRST column on the table go after our header columns.
 							$tokens = preg_split('/\s/', $clause);
 														
@@ -868,7 +877,7 @@ EOREGEX
 							}
 							
 							if(strtoupper($tokens[0]) == 'ADD' && strtoupper($tokens[count($tokens)-1]) == 'FIRST') {
-								$tokens[count($tokens)-1] = 'AFTER `fv$server_id`';
+								$tokens[count($tokens)-1] = 'AFTER `fv$gsn`';
 								$clause = join(' ', $tokens);
 							}
 							if($new_clauses) $new_clauses .= ', ';
@@ -1138,7 +1147,7 @@ EOREGEX
 			trigger_error('Could not access table:' . $v_table_name, E_USER_ERROR);
 		}
 			
-		$v_sql = FlexCDC::concat('CREATE TABLE IF NOT EXISTS`', $this->mvlogDB ,'`.`' ,$v_schema_name, '_', $v_table_name,'` ( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED, ', $v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
+		$v_sql = FlexCDC::concat('CREATE TABLE IF NOT EXISTS`', $this->mvlogDB ,'`.`' ,$v_schema_name, '_', $v_table_name,'` ( dml_type INT DEFAULT 0, uow_id BIGINT, `fv$server_id` INT UNSIGNED,fv$gsn bigint, ', $v_sql, 'KEY(uow_id, dml_type) ) ENGINE=INNODB');
 		$create_stmt = my_mysql_query($v_sql, $this->dest);
 		if(!$create_stmt) die1('COULD NOT CREATE MVLOG. ' . $v_sql . "\n");
 		$exec_sql = " INSERT IGNORE INTO `". $this->mvlogDB . "`.`" . $this->mvlogs . "`( table_schema , table_name , mvlog_name ) values('$v_schema_name', '$v_table_name', '" . $v_schema_name . "_" . $v_table_name . "')";

@@ -27,14 +27,14 @@ CREATE TABLE `mview` (
   `mview_refresh_period` int(11) default '86400',
   `mview_refresh_type` enum('INCREMENTAL','COMPLETE') default NULL,
   `mview_engine` enum('MyISAM','InnoDB') default 'InnoDB',
-  `mview_definition` varchar(32000),
+  `mview_definition` MEDIUMTEXT,
   `incremental_hwm` bigint(20) default NULL,
   `refreshed_to_uow_id` bigint(20) default NULL,
   `parent_mview_id` int null, 
   `created_at_signal_id` bigint null,
   PRIMARY KEY  (`mview_id`),
   UNIQUE KEY `mview_name` (`mview_name`,`mview_schema`)
-) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8;
 
 CREATE TABLE IF NOT EXISTS flexviews.refresh_log(tstamp timestamp, usec int auto_increment,  message TEXT, key(usec));
 
@@ -44,7 +44,7 @@ CREATE TABLE mview_settings(
   setting_key varchar(20), 
   setting_value varchar(50),
   primary key (setting_key)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 collate latin1_bin;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 collate utf8_bin;
 
 DROP TABLE IF EXISTS `mview_expression`;
 CREATE TABLE `mview_expression` (
@@ -59,7 +59,7 @@ CREATE TABLE `mview_expression` (
   PRIMARY KEY  (`mview_expression_id`),
   UNIQUE KEY `mview_id` (`mview_id`,`mview_alias`),
   KEY `mview_id_2` (`mview_id`,`mview_expr_order`)
-) ENGINE=InnoDB AUTO_INCREMENT=49 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=49 DEFAULT CHARSET=utf8;
 
 
 DROP TABLE IF EXISTS `mview_refresh_status`;
@@ -84,7 +84,7 @@ CREATE TABLE `mview_table` (
   `mview_join_order` int(11) default '999',
   PRIMARY KEY  (`mview_table_id`),
   UNIQUE KEY(mview_id, mview_table_alias)
-) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8;
 
 
 DROP TABLE IF EXISTS `mview_uow`;
@@ -92,14 +92,21 @@ CREATE TABLE `mview_uow` (
   `uow_id` SERIAL default NULL,
   `commit_time` TIMESTAMP,
   KEY `commit_time` (`commit_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+DROP TABLE IF EXISTS `mview_gsn`;
+CREATE TABLE `mview_gsn` (
+  `gsn` BIGINT NOT NULL DEFAULT 1,
+  PRIMARY KEY(`gsn`)
+) Engine=InnoDB DEFAULT CHARSET=utf8;
+INSERT INTO mview_gsn values (1);
 
 DROP TABLE IF EXISTS `mview_signal`;
 CREATE TABLE `mview_signal` (
   `signal_id` SERIAL default NULL,
   `signal_time` TIMESTAMP,
   primary key(signal_id)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 DROP TABLE IF EXISTS `mview_compute_schedule`;
 
@@ -109,7 +116,7 @@ CREATE TABLE `mview_compute_schedule` (
   `last_computed_at` datetime DEFAULT NULL,
   `last_compute_elapsed_seconds` int(11) DEFAULT '0',
   PRIMARY KEY (`mview_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 DROP TABLE IF EXISTS `mview_apply_schedule`;
 CREATE TABLE `mview_apply_schedule` (
@@ -119,7 +126,7 @@ CREATE TABLE `mview_apply_schedule` (
   `last_apply_elapsed_seconds` int(11) DEFAULT '0',
   `last_applied_at` datetime DEFAULT NULL,
   PRIMARY KEY (`mview_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 

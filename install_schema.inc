@@ -20,23 +20,13 @@
 SET SQL_MODE = STRICT_TRANS_TABLES;
 
 CREATE DATABASE IF NOT EXISTS flexviews;
-GRANT ALL ON *.* TO flexviews@localhost identified by 'flexdemo';
 
-GRANT/* CREATE, DROP, ALTER, DELETE, INDEX,
-      INSERT, SELECT, UPDATE, TRIGGER, CREATE VIEW,
-      SHOW VIEW, ALTER ROUTINE, CREATE ROUTINE, EXECUTE,
-      CREATE TEMPORARY TABLES, LOCK TABLES
-     */ALL
+GRANT ALL
    ON flexviews.*
-   TO flexviews@localhost;
+   TO flexviews@localhost 
+IDENTIFIED BY 'flexdemo';
 
--- In the following GRANT, USAGE gives the FLEXVIEWS
--- user SELECT access to all of your tables. 
--- You may want to change this to ALL (or the list of grants above)
--- If you want to create materialized views in databases OTHER than
--- the 'flexviews' database.
-
-GRANT USAGE/*,ALL*/
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, RELOAD, PROCESS, FILE, REFERENCES, INDEX, ALTER, SUPER, CREATE TEMPORARY TABLES, EXECUTE, REPLICATION SLAVE, REPLICATION CLIENT 
    ON *.*
    TO flexviews@localhost;
 
