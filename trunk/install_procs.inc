@@ -26,6 +26,7 @@ USE flexviews;
 \. ./procs/create.sql
 \. ./procs/delta.sql
 \. ./procs/disable.sql
+\. ./procs/drop_mvlog.sql
 \. ./procs/enable.sql
 \. ./procs/get_from.sql
 \. ./procs/get_grouping_list.sql
