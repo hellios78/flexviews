@@ -108,11 +108,6 @@ BEGIN
      SET v_sql = CONCAT(v_sql, ' AS ', v_mview_definition);
    ELSE
      CALL flexviews.ensure_validity(v_mview_id);
-     if flexviews.has_aggregates(v_mview_id) THEN 
-       SET @flex_option='';
-     else
-       SET @flex_option='DISTINCT';  -- use a global var
-     end if;
        
      SET v_sql = CONCAT(v_sql, flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
      SET v_sql = CONCAT(v_sql, flexviews.get_from(v_mview_id, 'JOIN', ''));
@@ -185,7 +180,7 @@ BEGIN
       EXECUTE drop_stmt;
       DEALLOCATE PREPARE drop_stmt;
 
-      SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,fv$gsn BIGINT, KEY(uow_id,fv$gsn))',char(10));
+      SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,fv$gsn BIGINT, KEY(uow_id),KEY(fv$gsn))',char(10));
 
       SET v_sql = CONCAT(v_sql, 'ENGINE=INNODB ');
       SET v_sql = CONCAT(v_sql, 'AS ( SELECT * FROM ', v_mview_schema, '.', v_mview_name, ' LIMIT 0)');
