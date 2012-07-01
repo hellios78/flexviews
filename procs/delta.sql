@@ -38,19 +38,22 @@ DECLARE v_cur_row INT;
 DECLARE v_row_count INT;
 DECLARE v_cnt_column TEXT;
 DECLARE v_only_agg BOOLEAN DEFAULT FALSE;
+DECLARE v_mview_fqn TEXT;
 
 SELECT mview_name,
        mview_schema,
        CONCAT(mview_schema, '.', mview_name, '_delta'), 
        incremental_hwm,
        refreshed_to_uow_id,  
-       mview_refresh_type
+       mview_refresh_type,
+       CONCAT(mview_schema, '.', mview_name) 
   INTO v_mview_name, 
        v_mview_schema,
        v_delta_table,
        v_incremental_hwm,
        v_refreshed_to_uow_id,
-       v_mview_refresh_type
+       v_mview_refresh_type,
+       v_mview_fqn
   FROM flexviews.mview
  WHERE mview_id = v_mview_id;
 
@@ -64,36 +67,58 @@ IF v_until_uow_id IS NULL OR v_until_uow_id = 0 THEN
 END IF;
 
 IF NOT flexviews.has_aggregates(v_mview_id) THEN
+  DROP TEMPORARY TABLE IF EXISTS apply_gsn;
+  CREATE TEMPORARY TABLE apply_gsn(uow_id bigint, dml_type tinyint signed, gsn bigint, primary key(uow_id,gsn)) engine=innodb;
+  set v_sql=concat('insert into apply_gsn select distinct uow_id, dml_type, fv$gsn gsn from ',
+                    v_delta_table,' where uow_id > ', v_refreshed_to_uow_id, ' and uow_id <= ', v_until_uow_id);
+  set @v_sql = v_sql;
+  PREPARE insert_stmt from @v_sql;
+  EXECUTE insert_stmt; 
+  DEALLOCATE PREPARE insert_stmt;
 
-  -- PROCESS INSERTS --
-  IF flexviews.get_delta_aliases(v_mview_id, '', FALSE) != '' THEN
-    SET v_sql = CONCAT('INSERT INTO ',
-        v_mview_schema, '.', v_mview_name,
-        ' SELECT DISTINCT NULL,', flexviews.get_delta_aliases(v_mview_id,'',FALSE), 
-        '   FROM ', v_delta_table, 
-        ' WHERE dml_type = 1 AND uow_id > ', v_refreshed_to_uow_id,
-        '   AND uow_id <= ', v_until_uow_id);
+  BEGIN
+    DECLARE v_dml_type tinyint;
+    DECLARE v_gsn bigint;
+    DECLARE v_uow_id bigint;
+    DECLARE v_done BOOLEAN DEFAULT FALSE;
+    DECLARE gsn_cur cursor for select * from apply_gsn order by uow_id, gsn;
+    DECLARE CONTINUE HANDLER FOR SQLSTATE '02000' SET v_done=TRUE;
+    SET v_done = false;
+    OPEN gsn_cur;
+    gsnLoop: LOOP
 
-    call flexviews.rlog (v_sql);
+      FETCH gsn_cur
+       INTO v_uow_id, 
+            v_dml_type,
+            v_gsn;
+          
+      IF v_done THEN
+        CLOSE gsn_cur;
+        LEAVE gsnLoop;
+      END IF;
 
-    SET @v_sql = v_sql;
-    PREPARE insert_stmt from @v_sql;
-    EXECUTE insert_stmt; 
-    DEALLOCATE PREPARE insert_stmt;
+      IF v_dml_type = 1 THEN
+        set v_sql = CONCAT('INSERT INTO ', v_mview_fqn, 
+                           ' SELECT NULL,', flexviews.get_delta_aliases(v_mview_id,'',FALSE), 
+                           '   FROM ', v_delta_table, 
+                           '  WHERE uow_id=', v_uow_id,
+                           '    AND fv$gsn=', v_gsn); 
+      ELSE
+        SET v_sql = CONCAT(' DELETE ', v_mview_fqn, '.*',
+                           '   FROM ', v_mview_fqn,
+                           '   NATURAL JOIN ', v_delta_table,
+                           '   WHERE fv$gsn = ', v_gsn,
+                           '     AND uow_id = ', v_uow_id);
+      END IF;
 
-    SET v_sql = CONCAT(' DELETE ', v_mview_schema, '.', v_mview_name, '.*',
-                       '   FROM ', v_mview_schema, '.', v_mview_name,
-                       '   JOIN ', v_mview_schema, '.', v_mview_name, '_delta',
-                       '  USING(', flexviews.get_delta_aliases( v_mview_id, '', FALSE), ')',
-                       ' WHERE dml_type = -1 AND uow_id > ', v_refreshed_to_uow_id,
-                       '   AND uow_id <= ', v_until_uow_id);
-    
-    SET @v_sql = v_sql;
-    PREPARE delete_stmt from @v_sql;
-    EXECUTE delete_stmt; 
-    DEALLOCATE PREPARE delete_stmt;
+      SET @v_sql = v_sql;
+      PREPARE stmt from @v_sql;
+      EXECUTE stmt; 
+      DEALLOCATE PREPARE stmt;
+    END LOOP;
 
-  END IF;
+  END;
+  DROP TEMPORARY TABLE IF EXISTS apply_gsn;
 
 ELSE -- this mview has aggregates
   SELECT mview_alias
