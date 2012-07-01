@@ -298,7 +298,7 @@ END IF;
        
 	 SET v_using_clause := flexviews.get_delta_aliases(v_mview_id, '', true); 
 
-         IF (LEFT(v_agg_set, -1) = ',') THEN
+         IF (RIGHT(v_agg_set, 1) = ',') THEN
            SET v_agg_set = LEFT(v_agg_set, LENGTH(v_agg_set)-1);
          END IF;
 
