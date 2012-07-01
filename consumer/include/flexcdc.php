@@ -40,7 +40,7 @@ function echo1($message) {
 
 }
 
-function my_mysql_query($a, $b=NULL, $debug=false) {
+function my_mysql_query($a, $b=NULL, $debug=true) {
 	if($debug) echo "$a\n";
 
 	if($b) {
@@ -665,6 +665,14 @@ EOREGEX
 								} else {
 									if(strpos($col,' ')) $col = substr($col,0,strpos($col,' '));
 								}
+
+								$last_point = strrpos($col, '.');
+								$first_point = strpos($col, '.');
+								if($last_point !== $first_point) {
+									$mod_str=substr($col, 0, $last_point-1);
+									$mod_str=str_replace('.','',$mod_str);
+									$col = $mod_str .= substr($col, $last_point);
+								}	
 							break;
 
 							case 'timestamp':
