@@ -86,21 +86,6 @@ CREATE TABLE `mview_table` (
   UNIQUE KEY(mview_id, mview_table_alias)
 ) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8;
 
-
-DROP TABLE IF EXISTS `mview_uow`;
-CREATE TABLE `mview_uow` (
-  `uow_id` SERIAL default NULL,
-  `commit_time` TIMESTAMP,
-  KEY `commit_time` (`commit_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
-DROP TABLE IF EXISTS `mview_gsn`;
-CREATE TABLE `mview_gsn` (
-  `gsn` BIGINT NOT NULL DEFAULT 1,
-  PRIMARY KEY(`gsn`)
-) Engine=InnoDB DEFAULT CHARSET=utf8;
-INSERT INTO mview_gsn values (1);
-
 DROP TABLE IF EXISTS `mview_signal`;
 CREATE TABLE `mview_signal` (
   `signal_id` SERIAL default NULL,
