@@ -185,7 +185,7 @@ BEGIN
       EXECUTE drop_stmt;
       DEALLOCATE PREPARE drop_stmt;
 
-      SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,fv$gsn BIGINT, KEY(uow_id,fv$gsn),mview$pk bigint default null)',char(10));
+      SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_delta( dml_type INT, uow_id BIGINT,fv$gsn BIGINT, KEY(uow_id,fv$gsn))',char(10));
 
       SET v_sql = CONCAT(v_sql, 'ENGINE=INNODB ');
       SET v_sql = CONCAT(v_sql, 'AS ( SELECT * FROM ', v_mview_schema, '.', v_mview_name, ' LIMIT 0)');
@@ -195,6 +195,15 @@ BEGIN
       PREPARE create_stmt FROM @v_sql;
       EXECUTE create_stmt;
       DEALLOCATE PREPARE create_stmt;
+
+      SET v_sql = CONCAT('ALTER TABLE ', v_mview_schema, '.', v_mview_name, '_delta DROP mview$pk');
+
+      SET @v_sql = v_sql;
+
+      PREPARE create_stmt FROM @v_sql;
+      EXECUTE create_stmt;
+      DEALLOCATE PREPARE create_stmt;
+
       -- If there are non-distributive aggregate functions, add a dependent materialization table
       -- A subview will only be created if necessary
       CALL flexviews.create_child_views(v_mview_id);

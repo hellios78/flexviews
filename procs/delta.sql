@@ -330,7 +330,7 @@ SET v_select_clause = flexviews.get_delta_select(v_mview_id, v_method, v_mview_t
 
 SET @delta_select = v_select_clause;
 SET @least_gsn = flexviews.get_delta_least_gsn(v_depth);
-SET v_select_clause = CONCAT('SELECT (', v_mview_table_alias, '.dml_type * ', v_method, ') as dml_type,', flexviews.get_delta_least_uowid(v_depth), ' as uow_id,', @least_gsn ,' as fv$gsn,NULL mview$pk ', IF(v_select_clause != '', concat(',', v_select_clause), ''));
+SET v_select_clause = CONCAT('SELECT (', v_mview_table_alias, '.dml_type * ', v_method, ') as dml_type,', flexviews.get_delta_least_uowid(v_depth), ' as uow_id,', @least_gsn ,' as fv$gsn ', IF(v_select_clause != '', concat(',', v_select_clause), ''));
 
 
 SET v_from_clause = flexviews.get_delta_from(v_depth);
