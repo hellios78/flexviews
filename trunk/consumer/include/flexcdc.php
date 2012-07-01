@@ -109,6 +109,8 @@ EOREGEX
 	protected $serverId = NULL;
 	
 	protected $binlogServerId=1;
+
+	protected $gsn_hwm;
 	
 	public  $raiseWarnings = false;
 	
@@ -177,7 +179,7 @@ EOREGEX
 		/*TODO: support unix domain sockets */
 		$this->source = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password'], true) or die1('Could not connect to MySQL server:' . mysql_error());
 		$this->dest = mysql_connect($D['host'] . ':' . $D['port'], $D['user'], $D['password'], true) or die1('Could not connect to MySQL server:' . mysql_error());
-
+		
 		$this->settings = $settings;
 	    
 	}
@@ -294,11 +296,14 @@ EOREGEX
 			my_mysql_query("CREATE TABLE 
 			 			 `" . $this->mview_uow . "` (
 						  	`uow_id` BIGINT AUTO_INCREMENT,
-						  	`commit_time` TIMESTAMP,
+						  	`commit_time` DATETIME,
+							`gsn_hwm` bigint NOT NULL DEFAULT 1,
 						  	PRIMARY KEY(`uow_id`),
 						  	KEY `commit_time` (`commit_time`)
 						) ENGINE=InnoDB DEFAULT CHARSET=latin1;"
 				    , $this->dest) or die1('COULD NOT CREATE TABLE ' . $this->mview_uow . ': ' . mysql_error($this->dest) . "\n");
+
+			my_mysql_query("INSERT INTO `" . $this->mview_uow . "` VALUES (1, NULL, 1);", $this->dest) or die1('COULD NOT INSERT INTO:' . $this->mview_uow . "\n");
 		}	
 		if($only_table === false || $only_table == 'binlog_consumer_status') {
 			if(FlexCDC::table_exists($this->mvlogDB, $this->binlog_consumer_status, $this->dest)) {
@@ -456,6 +461,12 @@ EOREGEX
 		$row = mysql_fetch_array($stmt);
 		$this->max_allowed_packet = $row[0];	
 
+		$stmt = my_mysql_query("select gsn_hwm from {$this->mvlogDB}.{$this->mview_uow} order by uow_id desc limit 1",$this->dest) 
+			or die('COULD NOT GET GSN_HWM:' . mysql_error($this->dest) . "\n");
+
+		$row = mysql_fetch_array($stmt);
+		$this->gsn_hwm = $row[0];
+
 		#echo1("Max_allowed_packet: " . $this->max_allowed_packet . "\n");
 		
 	}
@@ -520,8 +531,8 @@ EOREGEX
 	/* Called when a new transaction starts*/
 	function start_transaction() {
 		my_mysql_query("START TRANSACTION", $this->dest) or die1("COULD NOT START TRANSACTION;\n" . mysql_error());
-        $this->set_capture_pos();
-		$sql = sprintf("INSERT INTO `" . $this->mview_uow . "` values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'));",rtrim($this->timeStamp));
+        	$this->set_capture_pos();
+		$sql = sprintf("INSERT INTO `" . $this->mview_uow . "` values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'),%d);",rtrim($this->timeStamp),$this->gsn_hwm);
 		my_mysql_query($sql,$this->dest) or die1("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
 		 
 		$sql = "SET @fv_uow_id := LAST_INSERT_ID();";
@@ -539,6 +550,9 @@ EOREGEX
 		$this->inserts = $this->deletes = $this->tables = array();
 
 		$this->set_capture_pos();
+		$sql = "UPDATE `{$this->mvlogDB}`.`{$this->mview_uow}` SET `commit_time`=str_to_date('%s','%%y%%m%%d %%H:%%i:%%s'), `gsn_hwm` = %d WHERE `uow_id` = @fv_uow_id";
+		$sql = sprintf($sql, rtrim($this->timeStamp),$this->gsn_hwm);
+		my_mysql_query($sql, $this->dest) or die('COULD NOT UPDATE ' . $this->mvlogDB . "." . $this->mview_uow . ':' . mysql_error($this->dest) . "\n");
 		my_mysql_query("COMMIT", $this->dest) or die1("COULD NOT COMMIT TRANSACTION;\n" . mysql_error());
 	}
 
@@ -554,10 +568,12 @@ EOREGEX
 
 	/* Called when a row is deleted, or for the old image of an UPDATE */
 	function delete_row() {
+		$this->gsn_hwm+=1;
 		$key = '`' . $this->mvlogDB . '`.`' . $this->mvlog_table . '`';
 		$this->tables[$key]=array('schema'=>$this->db ,'table'=>$this->base_table); 
 		if ( $this->bulk_insert ) {
 			if(empty($this->deletes[$key])) $this->deletes[$key] = array();
+			$this->row['fv$gsn'] = $this->gsn_hwm;
 			$this->deletes[$key][] = $this->row;
 			if(count($this->deletes[$key]) >= 10000) {
 				$this->process_rows();	
@@ -571,7 +587,7 @@ EOREGEX
 				$col = mysql_real_escape_string($col);
 				$row[] = "'$col'";
 			}
-			$valList = "(-1, @fv_uow_id, {$this->binlogServerId},flexviews.gen_gsn()," . implode(",", $row) . ")";
+			$valList = "(-1, @fv_uow_id, {$this->binlogServerId},{$this->gsn_hwm}," . implode(",", $row) . ")";
 			$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
 			my_mysql_query($sql, $this->dest) or die1("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 		}
@@ -579,10 +595,12 @@ EOREGEX
 
 	/* Called when a row is inserted, or for the new image of an UPDATE */
 	function insert_row() {
+		$this->gsn_hwm+=1;
 		$key = '`' . $this->mvlogDB . '`.`' . $this->mvlog_table . '`';
 		$this->tables[$key]=array('schema'=>$this->db ,'table'=>$this->base_table); 
 		if ( $this->bulk_insert ) {
 			if(empty($this->inserts[$key])) $this->inserts[$key] = array();
+			$this->row['fv$gsn'] = $this->gsn_hwm;
 			$this->inserts[$key][] = $this->row;
 			if(count($this->inserts[$key]) >= 10000) {
 				$this->process_rows();	
@@ -596,7 +614,7 @@ EOREGEX
 				$col = mysql_real_escape_string($col);
 				$row[] = "'$col'";
 			}
-			$valList = "(1, @fv_uow_id, $this->binlogServerId,flexviews.gen_gsn()," . implode(",", $row) . ")";
+			$valList = "(1, @fv_uow_id, $this->binlogServerId,{$this->gsn_hwm}," . implode(",", $row) . ")";
 			$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
 			my_mysql_query($sql, $this->dest) or die1("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
 		}
@@ -621,9 +639,9 @@ EOREGEX
 				$sql = sprintf("INSERT INTO %s VALUES ", $table);
 				foreach($rows as $the_row) {	
 					$row = array();
-					
+					$gsn = $the_row['fv$gsn'];
+					unset($the_row['fv$gsn']);
 					foreach($the_row as $pos => $col) {
-		#				$col = trim($col);
 						if($col[0] == "'") {
 							$col = "'" . mysql_real_escape_string(trim($col,"'")) . "'";
 							
@@ -662,7 +680,7 @@ EOREGEX
 					}
 
 					if($valList) $valList .= ",\n";	
-					$valList .= "($mode, @fv_uow_id, $this->binlogServerId,flexviews.gen_gsn()," . implode(",", $row) . ")";
+					$valList .= "($mode, @fv_uow_id, $this->binlogServerId,$gsn," . implode(",", $row) . ")";
 					$bytes = strlen($valList) + strlen($sql);
 					$allowed = floor($this->max_allowed_packet * .9);  #allowed len is 90% of max_allowed_packet	
 					if($bytes > $allowed) {

@@ -40,20 +40,6 @@ RETURN v_uow_id;
 
 END;;
 
-DROP FUNCTION IF EXISTS flexviews.gen_gsn;;
-
-CREATE DEFINER=flexviews@localhost FUNCTION flexviews.gen_gsn(
-) RETURNS BIGINT
-READS SQL DATA
-BEGIN
-DECLARE v_gsn BIGINT;
-
-UPDATE flexviews.mview_gsn set gsn = gsn + 1;
-SELECT gsn from flexviews.mview_gsn into v_gsn;
-RETURN v_gsn;
-
-END;;
-
 DROP PROCEDURE IF EXISTS flexviews.uow_start;;
 
 CREATE DEFINER=flexviews@localhost PROCEDURE flexviews.uow_start(OUT v_uow_id BIGINT)
