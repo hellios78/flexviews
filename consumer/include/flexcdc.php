@@ -1180,7 +1180,7 @@ EOREGEX
 			if( $row === false ) $v_done = true;
 	
 			if( $row ) {
-				$v_column_name = $row[0];
+				$v_column_name = '`'. $row[0] . '`';
 				$v_data_type = $row[1];
 			}
 	
