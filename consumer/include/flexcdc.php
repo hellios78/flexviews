@@ -192,8 +192,10 @@ EOREGEX
 	}
 	
 	public function table_exists($schema, $table) {
-		$sql = "select 1 from $schema.$table limit 1";
-		$stmt = my_mysql_query($sql, $this->dest);
+		$sql = "select 1 from information_schema.tables where table_schema = '$schema' and table_name='$table' limit 1";
+		$stmt = @my_mysql_query($sql, $this->dest);
+		if(!$stmt) return false;
+
 		if(mysql_fetch_array($stmt) !== false) {
 			mysql_free_result($stmt);
 			return true;
@@ -506,11 +508,9 @@ EOREGEX
 	
 	/* Remove any logs that have gone away */
 	function cleanup_logs() {
-		if(FlexCDC::table_exists($this->mvlogDB, 'log_list', $this->dest)) {	
-			// TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
-			$sql = "DELETE bcs.* FROM `" . $this->binlog_consumer_status . "` bcs where exec_master_log_pos >= master_log_size and server_id={$this->serverId} AND master_log_file not in (select log_name from log_list)";
-			my_mysql_query($sql, $this->dest) or die1($sql . "\n" . mysql_error() . "\n");
-		} 
+		// TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
+		$sql = "DELETE bcs.* FROM `" . $this->binlog_consumer_status . "` bcs where exec_master_log_pos >= master_log_size and server_id={$this->serverId} AND master_log_file not in (select log_name from log_list)";
+		my_mysql_query($sql, $this->dest) or die1($sql . "\n" . mysql_error() . "\n");
 
 		$sql = "DROP TEMPORARY table IF EXISTS log_list";
 		my_mysql_query($sql, $this->dest) or die1("Could not drop TEMPORARY TABLE log_list\n");
