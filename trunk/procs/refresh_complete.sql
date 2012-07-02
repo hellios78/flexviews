@@ -54,12 +54,14 @@ SELECT mview_name,
  EXECUTE drop_stmt;
  DEALLOCATE PREPARE drop_stmt;
  
-
- SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_new ');
+ SET v_sql = CONCAT('CREATE TABLE ', v_mview_schema, '.', v_mview_name, '_new (mview$pk bigint auto_increment primary key');
  SET @v_keys = flexviews.get_keys(v_mview_id);
+
  IF @v_keys != "" THEN
-   SET v_sql = CONCAT(v_sql,'(', flexviews.get_keys(v_mview_id), ')');
+   SET v_sql = CONCAT(v_sql, ',', @v_keys,'\n');
  END IF;
+
+ SET v_sql = CONCAT(v_sql, ')');
  SET v_sql = CONCAT(v_sql, ' AS ');
  SET v_sql = CONCAT(v_sql, v_mview_definition);
 
