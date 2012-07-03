@@ -96,7 +96,11 @@ BEGIN
    -- key for the table if no primary key has been manually specified.  This key will be in the column
    -- order of GROUP expressions in the table which may not be ideal for selecting, so care should be 
    -- taken if a PRIMARY KEY is not provided to present the GROUP expressions in a suitable order..
-   
+
+   IF NOT flexviews.has_aggregates(v_mview_id) THEN
+      call flexviews.add_expr(v_mview_id,'COLUMN',(select concat('crc32(concat(',group_concat(distinct mview_expression),'))') from flexviews.mview_expression where mview_id = v_mview_id and mview_expr_type='COLUMN' and mview_alias != 'mview$hash'), 'mview$hash');
+      call flexviews.add_expr(v_mview_id,'KEY', 'mview$hash', 'mview$hash_key');
+   END IF;   
    SET v_keys = flexviews.get_keys(v_mview_id);
 
    IF v_keys != "" THEN
@@ -127,7 +131,6 @@ BEGIN
    END IF;
 
    SET @v_sql = v_sql;
-
    PREPARE create_stmt FROM @v_sql;
    SET @tstamp = NOW(); 
 
