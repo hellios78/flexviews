@@ -20,6 +20,8 @@
 
 error_reporting(E_ALL);
 ini_set('memory_limit', 1024 * 1024 * 1024);
+define('SOURCE', 'source');
+define('DEST', 'dest');
 
 /* 
 The exit/die() functions normally exit with error code 0 when a string is passed in.
@@ -52,7 +54,7 @@ function my_mysql_query($a, $b=NULL, $debug=false) {
 	if(!$r) {
 		echo1("SQL_ERROR IN STATEMENT:\n$a\n");
 		if($debug) {
-			$pr = mysql_error($b);
+			$pr = mysql_error();
 			echo1(print_r(debug_backtrace(),true));
 			echo1($pr);
 		}
@@ -115,21 +117,41 @@ EOREGEX
 	public  $raiseWarnings = false;
 	
 	public  $delimiter = ';';
-	public function get_source() {
+
+	protected $log_retention_interval = "10 day";
+	public function get_source($new = false) {
+		if($new) return $this->new_connection(SOURCE);
 		return $this->source;
 	}
 	
-	public function get_dest() {
+	public function get_dest($new = false) {
+		if($new) return $this->new_connection(DEST);
 		return $this->dest;
+	}
+
+	function new_connection($connection_type) {
+		$S = $this->settings['source'];
+		$D = $this->settings['dest'];
+		switch($connection_type) {
+			case 'source': 
+				/*TODO: support unix domain sockets */
+				$handle = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password'], true) or die1('Could not connect to MySQL server:' . mysql_error());
+				return $handle;
+			case 'dest':
+				$handle = mysql_connect($D['host'] . ':' . $D['port'], $D['user'], $D['password'], true) or die1('Could not connect to MySQL server:' . mysql_error());
+				return $handle;
+		}
+		return false;
 	}
 
 	#Construct a new consumer object.
 	#By default read settings from the INI file unless they are passed
 	#into the constructor	
-	public function __construct($settings = NULL) {
+	public function __construct($settings = NULL, $no_connect = false) {
 		
 		if(!$settings) {
 			$settings = $this->read_settings();
+			$this->settings = $settings;
 		}
 		if(!$this->cmdLine) $this->cmdLine = `which mysqlbinlog`;
 		if(!$this->cmdLine) {
@@ -148,6 +170,8 @@ EOREGEX
 		if(!empty($settings['flexcdc']['mvlogs'])) $this->mvlogs=$settings['flexcdc']['mvlogs'];
 		if(!empty($settings['flexcdc']['binlog_consumer_status'])) $this->binlog_consumer_status=$settings['flexcdc']['binlog_consumer_status'];
 		if(!empty($settings['flexcdc']['mview_uow'])) $this->mview_uow=$settings['flexcdc']['mview_uow'];
+
+		if(!empty($settings['flexcdc']['log_retention_interval'])) $this->log_retention_interval=$settings['flexcdc']['log_retention_interval'];
 		
 		#the mysqlbinlog command line location may be set in the settings
 		#we will autodetect the location if it is not specified explicitly
@@ -165,8 +189,6 @@ EOREGEX
 		
 		$this->auto_changelog = $settings['flexcdc']['auto_changelog'];		
 		#shortcuts
-		$S = $settings['source'];
-		$D = $settings['dest'];
 
 		if(!empty($settings['raise_warnings']) && $settings['raise_warnings'] != 'false') {
  			$this->raiseWarnings=true;
@@ -175,16 +197,21 @@ EOREGEX
 		if(!empty($settings['flexcdc']['bulk_insert']) && $settings['flexcdc']['bulk_insert'] != 'false') {
 			$this->bulk_insert = true;
 		}
-	
-		/*TODO: support unix domain sockets */
-		$this->source = mysql_connect($S['host'] . ':' . $S['port'], $S['user'], $S['password'], true) or die1('Could not connect to MySQL server:' . mysql_error());
-		$this->dest = mysql_connect($D['host'] . ':' . $D['port'], $D['user'], $D['password'], true) or die1('Could not connect to MySQL server:' . mysql_error());
-		
+
+		if(!$no_connect) {	
+			$this->source = $this->get_source(true);
+			$this->dest = $this->get_dest(true);
+		}
+
 		$this->settings = $settings;
 	    
 	}
 
+		
+
 	protected function initialize() {
+		if($this->source === false) $this->source = $this->get_source(true);
+		if($this->dest === false) $this->dest = $this->get_dest(true);
 		$this->initialize_dest();
 		$this->get_source_logs();
 		$this->cleanup_logs();
@@ -508,13 +535,52 @@ EOREGEX
 	
 	/* Remove any logs that have gone away */
 	function cleanup_logs() {
-		// TODO Detect if this is going to purge unconsumed logs as this means we either fell behind log cleanup, the master was reset or something else VERY BAD happened!
 		$sql = "DELETE bcs.* FROM `" . $this->binlog_consumer_status . "` bcs where exec_master_log_pos >= master_log_size and server_id={$this->serverId} AND master_log_file not in (select log_name from log_list)";
 		my_mysql_query($sql, $this->dest) or die1($sql . "\n" . mysql_error() . "\n");
 
 		$sql = "DROP TEMPORARY table IF EXISTS log_list";
 		my_mysql_query($sql, $this->dest) or die1("Could not drop TEMPORARY TABLE log_list\n");
 		
+	}
+
+	function purge_table_change_history() {
+		$conn = $this->get_dest(true);
+		$stmt = my_mysql_query("SET SQL_LOG_BIN=0", $conn) or die1($sql . "\n" . mysql_error() . "\n");
+		
+		$sql = "select max(uow_id) from {$this->mvlogDB}.{$this->mview_uow} where commit_time <= NOW() - INTERVAL " . $this->log_retention_interval;
+		$stmt = my_mysql_query($sql, $conn) or die1($sql . "\n" . mysql_error() . "\n");
+		$row = mysql_fetch_array($stmt);
+		$uow_id = $row[0];
+		if(!trim($uow_id)) return true;
+		$sql = "select min(uow_id) from {$this->mvlogDB}.{$this->mview_uow} where uow_id > {$uow_id}";
+		$stmt = my_mysql_query($sql, $conn) or die1($sql . "\n" . mysql_error() . "\n");
+		$row = mysql_fetch_array($stmt);
+		$next_uow_id = $row[0];
+		if(!trim($next_uow_id)) $uow_id = $uow_id - 1; /* don't purge the last row to avoid losing the gsn_hwm */
+
+		$sql = "select concat('`','{$this->mvlogDB}', '`.`', mvlog_name,'`') mvlog_fqn from {$this->mvlogDB}.{$this->mvlogs} where active_flag = 1";
+		$stmt = my_mysql_query($sql, $conn) or die1($sql . "\n" . mysql_error() . "\n");
+		$done=false;
+		$iterator = 0;
+		/* Delete from each table in small 5000 row chunks, commit every 50000 */
+		while($row = mysql_fetch_array($stmt)) {
+			my_mysql_query("START TRANSACTION", $conn) or die1($sql . "\n" . mysql_error() . "\n");
+			while(!$done) {
+				++$iterator;
+				if($iterator % 10 === 0) {
+					my_mysql_query("COMMIT", $conn) or die1($sql . "\n" . mysql_error() . "\n");
+					my_mysql_query("START TRANSACTION", $conn) or die1($sql . "\n" . mysql_error() . "\n");
+				}
+				$sql = "DELETE FROM {$row[0]} where uow_id <= {$uow_id} LIMIT 5000";
+				my_mysql_query($sql, $conn) or die1($sql . "\n" . mysql_error() . "\n");
+				if(mysql_affected_rows($conn)===0) $done=true; 
+			}
+			my_mysql_query("COMMIT", $conn) or die1($sql . "\n" . mysql_error() . "\n");
+		}
+		my_mysql_query("START TRANSACTION", $conn) or die1($sql . "\n" . mysql_error() . "\n");
+		$sql = "DELETE FROM {$this->mvlogDB}.{$this->mview_uow} where uow_id <= {$uow_id} LIMIT 5000";
+		my_mysql_query($sql, $conn) or die1($sql . "\n" . mysql_error() . "\n");
+		my_mysql_query("COMMIT", $conn) or die1($sql . "\n" . mysql_error() . "\n");
 	}
 
 	/* Update the binlog_consumer_status table to indicate where we have executed to. */
