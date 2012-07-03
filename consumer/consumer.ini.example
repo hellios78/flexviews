@@ -15,6 +15,12 @@ binlog_consumer_status=binlog_consumer_status
 mvlogs=mvlogs
 mview_uow=mview_uow
 
+;The following variable sets how long FlexCDC will allow change history to accumulate in the database.  Entries older than 
+;the given interval will be purged from the system.  Setting log_retention_interval="10 DAY" (the default) will retain 10 days of change data.  
+;The interval must be specified as N DAY or N HOUR (any MySQL INTERVAL will work, without the INTERVAL keyword)
+;NOTE: you must run the seperate cleanup_history.php script 
+log_retention_interval="10 DAY"
+
 ;comma separated list of databases to collect changelogs from, all other databases will be ignored
 ;since flexcdc uses row-based replication, you don't have to worry about cross database changes 
 
