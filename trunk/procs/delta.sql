@@ -789,6 +789,7 @@ SELECT mview_expr_type,
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
    AND m.mview_expr_type in ('AVG','COLUMN', 'GROUP','COUNT','SUM')
+   AND NOT trim(mview_expr_type = 'COLUMN' and mview_expression = '*')
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
@@ -854,6 +855,7 @@ SELECT mview_expr_type,
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
    AND m.mview_expr_type in ('COUNT','GROUP','SUM','COLUMN','AVG','MIN','MAX','COUNT_DISTINCT', 'STDDEV_POP','VAR_POP', 'STDDEV_SAMP','VAR_SAMP','GROUP_CONCAT','BIT_AND','BIT_OR','BIT_XOR','PERCENTILE')
+   AND NOT (m.mview_expr_type = 'COLUMN' and trim(mview_expression) = '*')
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
@@ -1216,6 +1218,7 @@ SELECT mview_expr_type,
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
    AND m.mview_expr_type in ( 'COLUMN', 'GROUP', 'MIN','MAX','COUNT_DISTINCT', 'STDDEV_SAMP','STDDEV_POP','VAR_POP','VAR_SAMP','BIT_AND','BIT_OR','BIT_XOR','GROUP_CONCAT', 'PERCENTILE' )
+   AND NOT (m.mview_expr_type = 'COLUMN' and trim(m.mview_expression) = '*')
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    

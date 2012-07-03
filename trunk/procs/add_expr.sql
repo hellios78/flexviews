@@ -149,7 +149,7 @@ BEGIN
       FROM flexviews.mview_expression
      WHERE mview_id=v_mview_id;
 
-      REPLACE INTO flexviews.mview_expression
+      INSERT INTO flexviews.mview_expression
       (  mview_id,
          mview_expr_type,
          mview_expression,
