@@ -40,6 +40,7 @@ SELECT mview_expr_type,
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id
    AND m.mview_expr_type in ('COLUMN','COUNT_DISTINCT','MIN','MAX', 'AVG', 'SUM', 'GROUP','COUNT','PERCENTILE','STDDEV_POP','STDDEV_SAMP','VAR_POP','VAR_SAMP','BIT_AND','BIT_OR','BIT_XOR','GROUP_CONCAT')
+   AND NOT (m.mview_expr_type = 'COLUMN' and trim(mview_expression) = '*') 
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
