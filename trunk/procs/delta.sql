@@ -138,7 +138,7 @@ ELSE -- this mview has aggregates
 
     SET v_sql = CONCAT('DELETE ', v_delta_table, '.*, ', v_mview_schema, '.', v_mview_name, '.* ',
                        '  FROM ',v_delta_table,
-                       '      ,', v_mview_schema, '.', v_mview_name,
+                       ' NATURAL JOIN ', v_mview_schema, '.', v_mview_name,
                        ' WHERE ', v_mview_name, '.', v_cnt_column, ' + ', v_delta_table, '.',v_cnt_column, '=0');
   	CALL flexviews.rlog(v_sql);
   	SET @v_sql = v_sql;
@@ -783,8 +783,8 @@ DECLARE v_mview_alias TEXT;
 DECLARE v_select_list TEXT default '';  
 DECLARE cur_select CURSOR 
 FOR  
-SELECT mview_expr_type, 
-       mview_expression, 
+SELECT IF(mview_expr_type='COLUMN' and v_only_groupby = true,'GROUP',mview_expr_type) ,
+       mview_expression,
        mview_alias
   FROM flexviews.mview_expression m
  WHERE m.mview_id = v_mview_id

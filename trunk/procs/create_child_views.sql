@@ -84,7 +84,9 @@ BEGIN
 
        -- Build the new view (this could be recursive...)
        SET max_sp_recursion_depth=999;
+       SET unique_checks=off;
        CALL flexviews.enable(v_new_mview_id);
+       SET unique_checks=on;
 	
   END IF;
 END ;;
