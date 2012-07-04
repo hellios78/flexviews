@@ -42,7 +42,7 @@ function echo1($message) {
 
 }
 
-function my_mysql_query($a, $b=NULL, $debug=false) {
+function my_mysql_query($a, $b=NULL, $debug=true) {
 	if($debug) echo "$a\n";
 
 	if($b) {
@@ -478,7 +478,7 @@ EOREGEX
 		#my_mysql_query("SELECT GET_LOCK('flexcdc::SOURCE_LOCK::" . $this->server_id . "',15)") or die1("COULD NOT OBTAIN LOCK\n");
 		mysql_select_db($this->mvlogDB) or die1('COULD NOT CHANGE DATABASE TO:' . $this->mvlogDB . "\n");
 		my_mysql_query("commit;", $this->dest);
-		$stmt = my_mysql_query("SET SQL_MODE=STRICT_ALL_TABLES");
+		#$stmt = my_mysql_query("SET SQL_MODE=STRICT_ALL_TABLES");
 		$stmt = my_mysql_query("SET SQL_LOG_BIN=0", $this->dest);
 		if(!$stmt) die1(mysql_error());
 		my_mysql_query("BEGIN;", $this->dest) or die1(mysql_error());
