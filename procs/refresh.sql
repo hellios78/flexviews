@@ -306,18 +306,15 @@ END IF;
            SET v_sql = CONCAT('UPDATE ', v_mview_schema, '.', v_mview_name, '\n',
                               '  JOIN (\n', 
                               'SELECT ', get_child_select(v_mview_id, 'cv'), '\n',
-                              '  FROM ', v_child_mview_name, ' as cv\n', 
-
-                              '  JOIN ', v_mview_schema, '.', v_mview_name, ' as pv \n '); 
-/*
-
+                              '  FROM ', v_child_mview_name, ' as cv\n',
                               '  JOIN ', v_mview_schema, '.', v_mview_name, '_delta as pv \n '); 
-*/
+                        --      '  JOIN ', v_mview_schema, '.', v_mview_name, ' as pv \n '); 
 
 	   IF v_using_clause != '' THEN 
              SET v_sql = CONCAT(v_sql, ' USING (', v_using_clause, ')\n',  
                               ' GROUP BY ', get_delta_aliases(v_mview_id, 'cv', true)); 
 	   END IF;
+
 
            SET v_sql = CONCAT(v_sql, ') x_alias \n');
 
