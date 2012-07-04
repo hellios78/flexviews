@@ -49,7 +49,7 @@ DROP PROCEDURE IF EXISTS enable;;
 CREATE DEFINER=flexviews@localhost PROCEDURE  `enable`(
   IN v_mview_id INT
 )
-BEGIN
+body: BEGIN
   DECLARE v_mview_enabled tinyint(1);
   DECLARE v_mview_refresh_type TEXT;
   DECLARE v_mview_engine TEXT;
@@ -104,6 +104,7 @@ BEGIN
       call flexviews.add_expr(v_mview_id,'COLUMN',(select concat('crc32(concat(',group_concat(distinct mview_expression),'))') from flexviews.mview_expression where mview_id = v_mview_id and mview_expr_type='COLUMN' and trim(mview_expression) != '*' and mview_alias != 'mview$hash'), 'mview$hash');
       call flexviews.add_expr(v_mview_id,'KEY', 'mview$hash', 'mview$hash_key');
    END IF;   
+
    SET v_keys = flexviews.get_keys(v_mview_id);
 
    IF v_keys != "" THEN
@@ -114,6 +115,7 @@ BEGIN
    IF v_mview_refresh_type != 'INCREMENTAL' THEN
      SET v_sql = CONCAT(v_sql, ' AS ', v_mview_definition);
    ELSE
+
      CALL flexviews.ensure_validity(v_mview_id);
        
      SET v_sql = CONCAT(v_sql, flexviews.get_select(v_mview_id, 'CREATE',''), char(10));
@@ -121,7 +123,6 @@ BEGIN
      IF flexviews.get_where(v_mview_id) != '' THEN
        SET v_sql = CONCAT(v_sql, ' WHERE ', flexviews.get_where(v_mview_id), char(10));
      END IF;
-
 
      IF flexviews.get_delta_groupby(v_mview_id) != "" THEN
        SET v_sql = CONCAT(v_sql, char(10), ' GROUP BY ', flexviews.get_delta_groupby(v_mview_id), char(10)); 
@@ -154,7 +155,6 @@ BEGIN
       IF flexviews.get_where(v_mview_id) != '' THEN
       	SET v_sql = CONCAT(v_sql, ' WHERE ', flexviews.get_where(v_mview_id), char(10));
       END IF;
-
 
       IF flexviews.get_delta_groupby(v_mview_id) != "" THEN
         SET v_sql = CONCAT(v_sql, char(10), ' GROUP BY ', flexviews.get_delta_groupby(v_mview_id), char(10)); 
@@ -204,7 +204,6 @@ BEGIN
       PREPARE create_stmt FROM @v_sql;
       EXECUTE create_stmt;
       DEALLOCATE PREPARE create_stmt;
-
       -- If there are non-distributive aggregate functions, add a dependent materialization table
       -- A subview will only be created if necessary
       CALL flexviews.create_child_views(v_mview_id);

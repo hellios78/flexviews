@@ -172,7 +172,7 @@ BEGIN
      end if;
   END IF;
 
-  IF v_mview_expr_type = 'GROUP'  OR v_mview_expr_type = 'COUNT' THEN
+  IF v_mview_expr_type = 'GROUP' or  v_mview_expr_type = 'COUNT' THEN
     call flexviews.add_expr(v_mview_id, 'KEY', v_mview_alias, concat('key_', v_mview_alias)); 
   END IF;
 
