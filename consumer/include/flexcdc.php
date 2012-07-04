@@ -844,7 +844,7 @@ EOREGEX
 				break;
 
 			case 'RENAME':
-/*
+
 				
 				#TODO: Find some way to make atomic rename atomic.  split it up for now
 				$tokens = FlexCDC::split_sql($sql);
@@ -914,7 +914,6 @@ EOREGEX
 					
 				}
 						
-			*/	
 				break;
 			#ALTER we can deal with via some clever regex, when I get to it.  Need a test case
 			#with some complex alters
