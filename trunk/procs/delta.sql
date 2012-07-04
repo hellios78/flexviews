@@ -217,12 +217,14 @@ IF v_cnt_column is not null THEN
 
 END IF;
 
+/*
   -- CLEAN UP THE DELTA LOG
   SET v_sql = CONCAT('DELETE FROM ', v_delta_table, ' WHERE dml_type is null OR  uow_id <= ', v_until_uow_id);
   SET @v_sql = v_sql;
   PREPARE delete_stmt FROM @v_sql;
   EXECUTE delete_stmt;
   DEALLOCATE PREPARE delete_stmt;
+*/
 
   
   -- Fix aggregate tables without group by attributes when they go to zero rows
@@ -1284,7 +1286,7 @@ SELECT mview_expr_type,
   FROM flexviews.mview_expression m
   JOIN flexviews.mview USING (mview_id)
  WHERE m.mview_id = v_mview_id
-   AND m.mview_expr_type = 'GROUP'
+   AND (m.mview_expr_type = 'GROUP' OR m.mview_expr_type = 'COLUMN')
  ORDER BY mview_expr_order;  
 
 DECLARE CONTINUE HANDLER FOR  SQLSTATE '02000'    
