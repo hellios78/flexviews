@@ -80,7 +80,7 @@ BEGIN
        -- Add a COUNT(*) as `CNT` since it would be added automatically anyway
        CALL flexviews.add_expr(v_new_mview_id, 'COUNT', '*', 'CNT');
 
-       CALL flexviews.add_expr(v_new_mview_id, 'UNIQUE', flexviews.get_delta_aliases(v_new_mview_id,'',TRUE), 'UK');
+       -- CALL flexviews.add_expr(v_new_mview_id, 'UNIQUE', flexviews.get_delta_aliases(v_new_mview_id,'',TRUE), 'UK');
 
        -- Build the new view (this could be recursive...)
        SET max_sp_recursion_depth=999;
