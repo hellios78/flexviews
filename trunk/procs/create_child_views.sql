@@ -25,7 +25,6 @@ BEGIN
   DECLARE v_new_mview_id INT;
   DECLARE v_needs_dependent_view BOOLEAN DEFAULT FALSE;
 
-  select 'hereA';
 
   SELECT count(*)
     INTO v_needs_dependent_view
@@ -42,10 +41,8 @@ BEGIN
      DELETE from flexviews.mview where mview_id = v_new_mview_id;
      SET v_new_mview_id := NULL;
    END IF;
-  select 'hereB';
 
   IF v_needs_dependent_view is not null and v_needs_dependent_view > 0 THEN
-  select 'hereC';
 
       -- Create the new view and set its parent to be the view we are enabling
       CALL flexviews.create(flexviews.get_setting('mvlog_db'), concat('mv$',v_mview_id),'INCREMENTAL');
@@ -66,7 +63,6 @@ BEGIN
         FROM flexviews.mview_table
        WHERE mview_id = v_mview_id;
 
-   select 'hereD';
 
       -- Copy the GB projections and any selections (where clauses) to the new view 
       REPLACE INTO flexviews.mview_expression
@@ -81,17 +77,14 @@ BEGIN
        WHERE mview_id = v_mview_id
          AND mview_expr_type in ('GROUP','WHERE','PERCENTILE','MIN','MAX','COUNT_DISTINCT', 'STDDEV_POP','STDDEV_SAMP','VAR_SAMP','VAR_POP','BIT_AND','BIT_OR','BIT_XOR','GROUP_CONCAT');
 
-select 'hereE';
        -- Add a COUNT(*) as `CNT` since it would be added automatically anyway
        CALL flexviews.add_expr(v_new_mview_id, 'COUNT', '*', 'CNT');
 
-select 'hereF';
        CALL flexviews.add_expr(v_new_mview_id, 'UNIQUE', flexviews.get_delta_aliases(v_new_mview_id,'',TRUE), 'UK');
 
        -- Build the new view (this could be recursive...)
        SET max_sp_recursion_depth=999;
        CALL flexviews.enable(v_new_mview_id);
-select 'hereG';
 	
   END IF;
 END ;;
