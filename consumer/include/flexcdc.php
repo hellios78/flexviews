@@ -762,6 +762,7 @@ EOREGEX
 				}
 				if($valList) {
 					my_mysql_query($sql . $valList, $this->dest) or die1("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
+					$valList = '';
 				}
 			}
 
