@@ -478,7 +478,7 @@ EOREGEX
 		#my_mysql_query("SELECT GET_LOCK('flexcdc::SOURCE_LOCK::" . $this->server_id . "',15)") or die1("COULD NOT OBTAIN LOCK\n");
 		mysql_select_db($this->mvlogDB) or die1('COULD NOT CHANGE DATABASE TO:' . $this->mvlogDB . "\n");
 		my_mysql_query("commit;", $this->dest);
-		#$stmt = my_mysql_query("SET SQL_MODE=STRICT_ALL_TABLES");
+		$stmt = my_mysql_query("SET SQL_MODE=STRICT_ALL_TABLES");
 		$stmt = my_mysql_query("SET SQL_LOG_BIN=0", $this->dest);
 		if(!$stmt) die1(mysql_error());
 		my_mysql_query("BEGIN;", $this->dest) or die1(mysql_error());
@@ -736,6 +736,7 @@ EOREGEX
 									$mod_str=str_replace('.','',$mod_str);
 									$col = $mod_str .= substr($col, $last_point);
 								}	
+								if($first_point) $col = trim($col, '0');
 							break;
 
 							case 'timestamp':
@@ -1187,6 +1188,7 @@ EOREGEX
 			#                         @2 = 'def'
 			#Where @1, @2 are the column number in the table	
 			} elseif(preg_match('/###\s+@[0-9]+=(.*)$/', $line, $matches)) {
+				echo "LINE: $line\n";
 				$this->row[] = $matches[1];
 
 			#This line does not start with ### so we are at the end of the images	
