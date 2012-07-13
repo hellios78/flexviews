@@ -58,7 +58,9 @@ class binlog_event_consumer {
 	
 	function consume($data) {
 		if(!$data) return;
+
 		$events = explode("\n", $data);
+		
 		$save_data = "";
 		foreach($events as $event) {
 			if($save_data) {
@@ -66,21 +68,45 @@ class binlog_event_consumer {
 				$save_data = "";
 			}
 			if(!$event) continue;
-			if(substr($event, -2) != "==") {
+			if(strlen($event) === 76 && substr($event, -1) !== '=') {
+				echo "SAVING: $event\n";
 				$save_data = $event;
 				continue;
 			}
-			echo "DATA: $event\n";
-			if(!$this->data = base64_decode($event,true)) die('base64 decode failed for: ' . $event . "\n");
+
+			$this->raw_data = $event;
+			echo "RAW EVENT: $event\n";
+			echo "RAW LEN:" . strlen($event) . "\n";
 			while($this->next_event());
 		}
 	}
 	
 	protected function next_event() {
-		if($this->data === false || $this->data === "") return false;
+		if($this->raw_data === false || $this->raw_data === "") return false;
+		$header = substr($this->raw_data,0,28); # 28 = (19 * 4 / 3) + 3
+		echo "HEADER: $header LEN: " . strlen($header) . "\n";
+		if(!$this->data .= base64_decode($header,true)) die('base64 decode failed for: ' . $header . "\n");
+		echo "DECODED LEN: " . strlen($this->data) . "\n";
+
 		$this->read_pos = 0;
 		$this->parse_event_header();
+		echo "REMAINING DATA AFTER PARSE: " . strlen($this->data) . "\n";
+
+		#print_r($this->header);
+		$body_size = $this->header->event_length - 19;
+		$bytes_to_decode = floor($body_size * 4 / 3) + ( ($body_size * 4 % 3) != 0 ? 4 - ($body_size * 4 % 3) : 0 );
+		$body = substr($this->raw_data, 28, $bytes_to_decode);
+
+		echo "BODY: $body\n";
+		echo "EXPECT BODY SIZE(after decoding): $body_size, BODY SIZE(encoded): $bytes_to_decode, BYTES IN STREAM: " . strlen($body) . "\n";
+		if(!$this->data .= base64_decode($body,true)) die('base64 decode failed for: ' . $body . "\n");
+		$this->raw_data = substr($this->raw_data, $bytes_to_decode + 28);
+
+		echo "EXPECTED BODY SIZE: $body_size, GOT BODY SIZE: " . strlen($this->data) . "\n";
+		echo "REMAINING RAW DATA |{$this->raw_data}|\n";
+		echo "PARSING EVENT BODY\n";		
 		$this->parse_event_body();
+		echo "AT ACTUAL_READ_POS: {$this->read_pos} EXPECTED_READ_POS: {$this->header->event_length}\n";
 
 		if($this->read_pos < $this->header->event_length) {
 			echo "AFTER EVENT PARSE REMAINING_DATA_LENGTH: " . strlen($this->data) . "\n";
@@ -146,21 +172,23 @@ class binlog_event_consumer {
 
 	protected function parse_table_map_event() {
 		$table_id = $this->read(6);
-		#echo $this->cast($table_id) . "\n";
+		echo "TABLE_ID: " . $this->cast($table_id) . "\n";
 		$flags = $this->read(2);
 		$db = $this->read_lpstringz();
 		$table = $this->read_lpstringz();
 		$this->table_map[$table_id] = (object)array('db'=>trim($db,chr(0)), 'table' => trim($table,chr(0)));
 
 		$column_count = $this->cast($this->read_varint(false));
+		echo "COLUMN COUNT: $column_count\n";
 		$data = $this->read($column_count);
 		$data = str_split($data);
 
 		$columns = array();
 		$length = $this->cast($this->read_varint(false)); 
-		if($length) $this->table_map[$table_id]->metadata = $this->read($length);
+		echo "EXTRA LENGTH: $length\n";
 
 		foreach($data as $col => $data_type) {
+			echo "GETTING METADATA FOR @$col OF DATA TYPE: ". $this->data_type_map[$this->cast($data_type)] . "\n";
 			$data_type = $this->cast($data_type);
 			$columns[$col]['type'] = $data_type;
 			// $columns[$col]['type_text'] = $this->data_types[$data_type];
@@ -171,10 +199,11 @@ class binlog_event_consumer {
 				case $m['double']:
 					$columns[$col]['metadata'] = (object)array('size'=>$this->cast($this->read(1)));
 				break;
-				
+			
 				case $m['varchar']:
-					$columns[$col]['metadata'] = (object)array('max_length' => $this->cast($this->read(2)));
+					$columns[$col]['metadata'] = (object)array('max_length' => $this->cast($this->read(2,'reading data for varchar')));
 				break;
+		
 
 				case $m['bit']:
 					$bits = $this->cast($this->read(1));
@@ -210,10 +239,9 @@ class binlog_event_consumer {
 							$columns[$col]['metadata'] = (object)array('max_length' => $size);
 					}
 				break;
-					
-			}
+			}	
 		}
-
+		
 		$nullable = $this->read_bit_array($column_count,false);
 
 		for($i=0;$i<count($columns);++$i) {
@@ -236,6 +264,7 @@ class binlog_event_consumer {
 	}
 	
 	protected function parse_row_event($mode='insert') {
+		echo "PARSING ROW EVENT\n";
 		$fields = array();
 		$table_id = $this->read(6);
 		if(empty($this->table_map[$table_id])) die('ROW IMAGE WITHOUT MAPPING TABLE MAP');
@@ -244,9 +273,10 @@ class binlog_event_consumer {
 		$columns_used=array();
 		switch($mode) {
 			case 'insert':
-					echo "READING USED FOR NEW\n";
+					echo "READING COLUMNS USED\n";
 					$columns_used = $this->read_bit_array($column_count, false);
 					while($this->data){
+						echo "READING AN IMAGE\n";
 						++$this->gsn;
 						$data=$this->read_row_image($table_id, $columns_used);
 						$this->rows[$table_id] = array('dml_mode' => 1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used, 'image'=>$data['image'], 'nulls' => $data['nulls']);
@@ -254,9 +284,7 @@ class binlog_event_consumer {
 			break;
 			
 			case 'update':
-					echo "READING USED FOR OLD\n";
 					$columns_used['old'] = $this->read_bit_array($column_count,false);
-					echo "READING USED FOR NEW\n";
 					$columns_used['new'] = $this->read_bit_array($column_count,false);
 					while($this->data) {	
 						++$this->gsn;
@@ -271,7 +299,6 @@ class binlog_event_consumer {
 			break;
 			
 			case 'delete':
-					echo "READING USED FOR OLD\n";
 					++$this->gsn;
 					$columns_used = $this->read_bit_array($column_count, false);
 					while($this->data) {
@@ -285,14 +312,9 @@ class binlog_event_consumer {
 	}
 	
 	protected function read_row_image($table_id, $columns_used) {
-		echo "READING ROW IMAGE\n";
 		$row_data = "";
-		echo "Reading NULL column bit array\n";
+
 		$columns_null = $this->read_bit_array(count($this->table_map[$table_id]->columns), false);
-		echo "USED:\n";
-		print_r($columns_used);
-		echo "NULL:\n";
-		print_r($columns_null);
 
 		foreach($this->table_map[$table_id]->columns as $col => $col_info)	{
 			if(!$columns_used[$col]) {
@@ -345,7 +367,7 @@ class binlog_event_consumer {
 
 	protected function read($bytes,$message="") {
 		$return = substr($this->data,0,$bytes);
-		if ($message) echo "$message READ: $bytes, GOT: " . strlen($return) . "\n";
+		if ($message) echo "$message LEFT: " . strlen($this->data) . " READ: $bytes, GOT: " . strlen($return) . "\n";
 		$this->read_pos += $bytes;
 		$this->data = substr($this->data, $bytes);
 		return $return;
@@ -479,55 +501,3 @@ class binlog_event_consumer {
 	}
 			
 }
-
-
-
-$b = '
-nnr0Tw8CAAAAZwAAAGsAAAABAAQANS41LjI0LXJlbDI2LjAtbG9nAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAACeevRPEzgNAAgAEgAEBAQEEgAAVAAEGggAAAAICAgCAA==
-';
-
-$consumer = new binlog_event_consumer($b);
-$b = '
-uXr0TxMCAAAAOwAAAPAAAAAAAIgAAAAAAAEACmdlb2dyYXBoaWMACXRlc3RfY2FzZQAC9vYECgoU
-CgM=
-uXr0TxcCAAAALQAAAB0BAAAAAIgAAAAAAAEAAv/8SA5gD/+EEZTYAAAPQkAA
-';
-$consumer->consume($b);
-//print_r($event);
-
-$b ='
-e/X1TxMCAAAAPAAAAEsHAAAAAJkAAAAAAAEACmdlb2dyYXBoaWMACXRlc3RfY2FzZQAD9vYDBAoK
-FAoD
-e/X1TxgCAAAAbgAAALkHAAAAAJkAAAAAAAEAA///+EgOYA//hBGU2AAAD0JAAAMAAAD4SA5gD/+E
-EZTYAAAPQkAABQAAAPhIDmAP/4QRlNgAAA9CQAAEAAAA+EgOYA//hBGU2AAAD0JAAAYAAAA=
-';
-$consumer->consume($b);
-
-
-$b=
-'
-RLH3TxMCAAAANAAAAN8AAAAAAJwAAAAAAAEACmdlb2dyYXBoaWMABXRlc3QyAAMDAwMABw==
-RLH3TxcCAAAAKgAAAAkBAAAAAJwAAAAAAAEAA//4AQAAAAIAAAADAAAA
-';
-$consumer->consume($b);
-#$consumer->reset();
-
-$b = '
-qRT6TxMCAAAANAAAAN8AAAAAACEAAAAAAAEACmdlb2dyYXBoaWMABXRlc3QyAAMDAwMABw==
-qRT6TxcCAAAANwAAABYBAAAAACEAAAAAAAEAA//4BgAAAAYAAAAGAAAA+AcAAAAHAAAABwAAAA==
-';
-$consumer->consume($b);
-
-$b = '
-Dg36TxMCAAAANAAAAN8AAAAAACEAAAAAAAEACmdlb2dyYXBoaWMABXRlc3QyAAMDAwMABw==
-Dg36TxgCAAAAUgAAADEBAAAAACEAAAAAAAEAA///+AEAAAACAAAAAwAAAPgBAAAAAgAAAAQAAAD4
-AQAAAAIAAAADAAAA+AEAAAACAAAABAAAAA==
-';
-
-$consumer->consume($b);
-
-
-#print_r($consumer);
-
-
