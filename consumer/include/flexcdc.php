@@ -100,8 +100,6 @@ EOREGEX
 	protected $onlyDatabases = array();
 	protected $cmdLine;
 
-	protected $tables = array();
-
 	protected $mvlogs = 'mvlogs';
 	protected $binlog_consumer_status = 'binlog_consumer_status';
 	protected $mview_uow = 'mview_uow';
@@ -217,6 +215,13 @@ EOREGEX
 	protected function initialize() {
 		if($this->source === false) $this->source = $this->get_source(true);
 		if($this->dest === false) $this->dest = $this->get_dest(true);
+
+		#get the source MySQL version so we can construct a format description event later
+		$sql = "SELECT version()";
+		$stmt = my_mysql_query($sql, $this->source) or die('Could not get source server version\n');
+		$row = mysql_fetch_array($stmt);
+		$this->serverVersion = $row[0];
+
 		$this->initialize_dest();
 		$this->get_source_logs();
 		$this->cleanup_logs();
@@ -235,58 +240,6 @@ EOREGEX
 		return false;
 	}
 
-	public function table_ordinal_datatype($schema,$table,$pos) {
-		static $cache;
-
-		$key = $schema . $table . $pos;
-		if(!empty($cache[$key])) {
-			return $cache[$key];
-		} 
-
-		$log_name = $schema . '_' . $table;
-		$table  = mysql_real_escape_string($table, $this->dest);
-		$pos	= mysql_real_escape_string($pos);
-
-		$sql = 'select data_type from information_schema.columns where table_schema="%s" and table_name="%s" and ordinal_position="%s"';
-
-		$sql = sprintf($sql, $this->mvlogDB, $log_name, $pos+4);
-
-		$stmt = my_mysql_query($sql, $this->dest);
-		if($row = mysql_fetch_array($stmt) ) {
-			$cache[$key] = $row[0];	
-			return($row[0]);
-		}
-		return false;
-			
-		
-	}
-
-	public function table_ordinal_is_unsigned($schema,$table,$pos) {
-		/* NOTE: we look at the LOG table to see the structure, because it might be different from the source if the consumer is behind and an alter has happened on the source*/
-		static $cache;
-
-		$key = $schema . $table . $pos;
-		if(!empty($cache[$key])) {
-			return $cache[$key];
-		} 
-
-		$log_name = $schema . '_' . $table;
-		$table  = mysql_real_escape_string($table, $this->dest);
-		$pos	= mysql_real_escape_string($pos);
-		$sql = 'select column_type like "%%unsigned%%" is_unsigned from information_schema.columns where table_schema="%s" and table_name="%s" and ordinal_position=%d';
-
-		$sql = sprintf($sql, $this->mvlogDB, $log_name, $pos+4);
-
-		$stmt = my_mysql_query($sql, $this->dest);
-		if($row = mysql_fetch_array($stmt) ) {
-			$cache[$key] = $row[0];	
-			return($row[0]);
-		}
-		return false;
-			
-		
-	}
-	
 	public function setup($force=false , $only_table=false) {
 		$sql = "SELECT @@server_id";
 		$stmt = my_mysql_query($sql, $this->source);
@@ -425,7 +378,8 @@ EOREGEX
 				$this->binlogPosition = $row['exec_master_log_pos'];
 				$this->logName = $row['master_log_file'];
 				$this->process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos'],$line);
-				exit; /*FIXME*/
+				echo "SHAAZAAM!\n";
+				exit;
 				$this->set_capture_pos();	
 				my_mysql_query('commit', $this->dest);
 				pclose($proc);
@@ -613,12 +567,6 @@ EOREGEX
     
     /* Called when a transaction commits */
 	function commit_transaction() {
-		//Handle bulk insertion of changes
-		if(!empty($this->inserts) || !empty($this->deletes)) {
-			$this->process_rows();
-		}
-		$this->inserts = $this->deletes = $this->tables = array();
-
 		$this->set_capture_pos();
 		$sql = "UPDATE `{$this->mvlogDB}`.`{$this->mview_uow}` SET `commit_time`=str_to_date('%s','%%y%%m%%d %%H:%%i:%%s'), `gsn_hwm` = %d WHERE `uow_id` = @fv_uow_id";
 		$sql = sprintf($sql, rtrim($this->timeStamp),$this->gsn_hwm);
@@ -628,160 +576,11 @@ EOREGEX
 
 	/* Called when a transaction rolls back */
 	function rollback_transaction() {
-		$this->inserts = $this->deletes = $this->tables = array();
 		my_mysql_query("ROLLBACK", $this->dest) or die1("COULD NOT ROLLBACK TRANSACTION;\n" . mysql_error());
 		#update the capture position and commit, because we don't want to keep reading a truncated log
 		$this->set_capture_pos();
 		my_mysql_query("COMMIT", $this->dest) or die1("COULD NOT COMMIT TRANSACTION LOG POSITION UPDATE;\n" . mysql_error());
 		
-	}
-
-	/* Called when a row is deleted, or for the old image of an UPDATE */
-	function delete_row() {
-		$this->gsn_hwm+=1;
-		$key = '`' . $this->mvlogDB . '`.`' . $this->mvlog_table . '`';
-		$this->tables[$key]=array('schema'=>$this->db ,'table'=>$this->base_table); 
-		if ( $this->bulk_insert ) {
-			if(empty($this->deletes[$key])) $this->deletes[$key] = array();
-			$this->row['fv$gsn'] = $this->gsn_hwm;
-			$this->deletes[$key][] = $this->row;
-			if(count($this->deletes[$key]) >= 10000) {
-				$this->process_rows();	
-			}
-		} else {
-			$row=array();
-			foreach($this->row as $col) {
-				if($col[0] == "'") {
-					 $col = trim($col,"'");
-				}
-				$col = mysql_real_escape_string($col);
-				$row[] = "'$col'";
-			}
-			$valList = "(-1, @fv_uow_id, {$this->binlogServerId},{$this->gsn_hwm}," . implode(",", $row) . ")";
-			$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
-			my_mysql_query($sql, $this->dest) or die1("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
-		}
-	}
-
-	/* Called when a row is inserted, or for the new image of an UPDATE */
-	function insert_row() {
-		$this->gsn_hwm+=1;
-		$key = '`' . $this->mvlogDB . '`.`' . $this->mvlog_table . '`';
-		$this->tables[$key]=array('schema'=>$this->db ,'table'=>$this->base_table); 
-		if ( $this->bulk_insert ) {
-			if(empty($this->inserts[$key])) $this->inserts[$key] = array();
-			$this->row['fv$gsn'] = $this->gsn_hwm;
-			$this->inserts[$key][] = $this->row;
-			if(count($this->inserts[$key]) >= 10000) {
-				$this->process_rows();	
-			}
-		} else {
-			$row=array();
-			foreach($this->row as $col) {
-				if($col[0] == "'") {
-					 $col = trim($col,"'");
-				}
-				$col = mysql_real_escape_string($col);
-				$row[] = "'$col'";
-			}
-			$valList = "(1, @fv_uow_id, $this->binlogServerId,{$this->gsn_hwm}," . implode(",", $row) . ")";
-			$sql = sprintf("INSERT INTO `%s`.`%s` VALUES %s", $this->mvlogDB, $this->mvlog_table, $valList );
-			my_mysql_query($sql, $this->dest) or die1("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
-		}
-	}
-
-	function process_rows() {
-		$i = 0;
-		
-		while($i<2) {
-			$valList =  "";
-			if ($i==0) {
-				$data = $this->inserts;
-				$mode = 1;
-			} else {
-				$data = $this->deletes;
-				$mode = -1;
-			}		
-			$tables = array_keys($data);
-			foreach($tables as $table) {
-				$rows = $data[$table];	
-				
-				$sql = sprintf("INSERT INTO %s VALUES ", $table);
-				foreach($rows as $the_row) {	
-					$row = array();
-					$gsn = $the_row['fv$gsn'];
-					unset($the_row['fv$gsn']);
-					foreach($the_row as $pos => $col) {
-						if($col[0] == "'") {
-							$col = "'" . mysql_real_escape_string(trim($col,"'")) . "'";
-							
-						}
-					
-						$datatype = $this->table_ordinal_datatype($this->tables[$table]['schema'],$this->tables[$table]['table'],$pos+1);
-						switch(trim($datatype)) {
-							case 'int':
-							case 'tinyint':
-							case 'mediumint':
-							case 'smallint':
-							case 'bigint':
-							case 'serial':
-							case 'decimal':
-							case 'float':
-							case 'double':
-								if($this->table_ordinal_is_unsigned($this->tables[$table]['schema'],$this->tables[$table]['table'],$pos+1)) {
-									if($col[0] == "-" && strpos($col, '(')) {
-										$col = substr($col, strpos($col,'(')+1, -1);
-									}
-								} else {
-									if(strpos($col,' ')) $col = substr($col,0,strpos($col,' '));
-								}
-
-								$last_point = strrpos($col, '.');
-								$first_point = strpos($col, '.');
-								if($last_point !== $first_point) {
-									$mod_str=substr($col, 0, $last_point-1);
-									$mod_str=str_replace('.','',$mod_str);
-									$col = $mod_str .= substr($col, $last_point);
-								}	
-								if($first_point) $col = trim($col, '0');
-							break;
-
-							case 'timestamp':
-								$col = 'from_unixtime(' . $col . ')';
-							break;
-
-							case 'datetime': 
-								$col = "'" . mysql_real_escape_string(trim($col,"'")) . "'";
-							break;
-						}
-
-						$row[] = $col;
-					}
-
-					if($valList) $valList .= ",\n";	
-					$valList .= "($mode, @fv_uow_id, $this->binlogServerId,$gsn," . implode(",", $row) . ")";
-					$bytes = strlen($valList) + strlen($sql);
-					$allowed = floor($this->max_allowed_packet * .9);  #allowed len is 90% of max_allowed_packet	
-					if($bytes > $allowed) {
-						my_mysql_query($sql . $valList, $this->dest) or die1("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
-						$valList = "";
-					}
-					
-				}
-				if($valList) {
-					my_mysql_query($sql . $valList, $this->dest) or die1("COULD NOT EXEC SQL:\n$sql\n" . mysql_error() . "\n");
-					$valList = '';
-				}
-			}
-
-			++$i;
-		}
-
-		unset($this->inserts);
-		unset($this->deletes);
-		$this->inserts = array();
-		$this->deletes = array();
-
 	}
 
 	/* Called for statements in the binlog.  It is possible that this can be called more than
@@ -792,16 +591,23 @@ EOREGEX
 			$end_comment = strpos($sql, ' ');
 			$sql = trim(substr($sql, $end_comment, strlen($sql) - $end_comment));
 		}
-		
+		$command = "";
+		$args = "";
+	
 		$space_pos = strpos($sql, ' ');	
-		$command = trim(substr($sql, 0, $space_pos));
-		$args = trim(substr($sql, $space_pos));
+		if($space_pos !== false) {
+			$command = trim(strtoupper(trim(substr($sql, 0, $space_pos))));
+			$args = trim(substr($sql, $space_pos));
+		} else {
+			$command = trim($sql);
+		}
+
 		if($args ) { 
 			if($command !== 'DELIMITER') $args = str_replace($this->delimiter, '', $args);
 		} else {
 			$command = str_replace($this->delimiter, '', $command);
 		}
-		
+
 		switch(strtoupper($command)) {
 			#register change in delimiter so that we properly capture statements
 			case 'DELIMITER':
@@ -823,12 +629,19 @@ EOREGEX
 			case 'BINLOG':
 				$args = trim($args,"'\n");
 				$this->binlog_parser->consume($args);
+				break;
+
 			#END OF BINLOG, or binlog terminated early, or mysqlbinlog had an error
 			case 'ROLLBACK':
+				$this->binlog_parser->reset();
+				echo "DO ROLLBACK WORK!\n";
 				#$this->rollback_transaction();
 				break;
 				
 			case 'COMMIT':
+				echo "DO COMMIT WORK\n";
+				if(count($this->binlog_parser->rows > 0)) $this->process_rows();
+				$this->binlog_parser->reset();
 				#$this->commit_transaction(); /*FIXME*/
 				break;
 				
@@ -1050,6 +863,132 @@ EOREGEX
 		}
 		return false;
 	} 
+
+	function process_rows() {
+		print_r($this->mvlogList);
+
+		foreach($this->binlog_parser->table_map as $table_id => $info) {
+			print_r($info);
+			if(empty($this->mvlogList[$info->db . $info->table])) {
+				echo "Skipping table because it is not being logged\n";
+				continue;
+			} 
+/*
+(
+    [timestamp] => 1342572043
+    [event_type] => 23
+    [server_id] => 2
+    [event_length] => 42
+    [next_position] => 1439
+    [flags] => 0
+)
+*/
+			echo "WOULD PROCESS ROWS HERE\n";
+			$output = chunk_split(base64_encode($this->encode_fde()), 76, "\n");
+			echo "BINLOG '\n$output'/*!*/;\n";
+	
+			$body = $this->remap_table($table_id, $this->binlog_parser->table_map[$table_id]);
+			$h = $this->binlog_parser->header; #treat the last header we saw as a template
+			$output = $this->encode_int($h->timestamp, 32);
+			$output .= chr(19); #table map event
+			$output .= $this->encode_int($this->serverId,32);
+			$output .= $this->encode_int(19 + strlen($body),32);
+			$output .= $this->encode_int(0,32);
+			$output .= $this->encode_int($h->flags,16);
+			#echo "HEADER BYTE LEN: " . strlen($output) . "\n";
+			$output .= $body;  
+
+			$output = chunk_split(base64_encode($output), 76, "\n");
+			echo "BINLOG '\n$output'/*!*/;\n";
+
+			#$z = new binlog_event_consumer();
+			#$z->consume($output);
+
+			exit;
+		}
+	}
+
+	protected function encode_fde() {
+		$output = $this->encode_int(time(), 32);
+		$output .= chr(15); #FDE
+		$output .= $this->encode_int($this->binlog_parser->header->server_id,32);
+		$output .= $this->encode_int(19 + strlen($this->binlog_parser->fde->encoded),32); #event size
+		$output .= $this->encode_int(19 + strlen($this->binlog_parser->fde->encoded),32); #next offset
+		$output .= $this->encode_int(0,16);
+		return $output . $this->binlog_parser->fde->encoded;
+	}
+
+	protected function encode_lpstring($string, $with_null = true) {
+		$size_type = (strlen($string) < 256 ? 'C' : 'S');
+		$size_bytes = pack($size_type, strlen($string));
+		if($with_null) $string .= chr(0);
+		return $size_bytes . $string;
+	}
+
+	protected function encode_varint($int) {
+		if($int === null) return chr(251);
+		if(($int >= -128 && $int <= 250)) return chr($int);
+		if(($int >= -32768 && $int <= 65535)) return(chr(252) . pack("S", $int));	
+		if(($int >= -8388608 && $int <= 8388607)) return(chr(253) . $this->encode_int($int,24));	
+		return(chr(254) . $this->encode_int($int,64));	
+	}
+
+        function encode_int($in, $pad_to_bits=64, $little_endian=true) {
+                $in = decbin($in);
+		$in = str_pad($in, $pad_to_bits, '0', STR_PAD_LEFT);
+                $out = '';
+                for ($i = 0, $len = strlen($in); $i < $len; $i += 8) {
+                        $out .= chr(bindec(substr($in,$i,8)));
+                }
+		if($little_endian) $out = strrev($out);
+                return $out;
+        }
+
+        function encode_bitmap($bits) {
+		if(!is_string($bits)) $bits = join('',$bits);
+		$bits = strrev($bits);
+		
+                $bits = str_pad($bits, floor(strlen($bits) / 8) + ((strlen($bits) % 8) > 0 ? 1 : 0), '0', STR_PAD_LEFT);
+                $out = '';
+		
+                for ($i = 0, $len = strlen($bits); $i < $len; $i += 8) {
+                        $out .= chr(bindec(substr($bits, $i, 8)));
+                }
+
+		return $out;
+        }
+
+	function remap_table($table_id, $map) {
+		#encode the body header
+		$output = $table_id; # 6 bytes for table id
+		$output .= $map->raw_flags;
+
+		#remap the table to the new table
+		$output .= $this->encode_lpstring($this->mvlogDB); #remap the DB into the new db
+		$output .= $this->encode_lpstring($this->mvlogList[$map->db . $map->table]); #remap to the new table
+
+		#store the number of columns
+		$output .= $this->encode_varint(count($map->columns) + 4); #column count + 4 new columns (dml_type, uow_id, fv$server_id, fv$gsn)
+
+		#output the byte array of data types
+		$output .= chr(3) . chr(8) . chr(3) . chr(8);  #data types for new columns (int=3, bigint=8)
+		foreach($map->columns as $col) {
+			$output .= chr($col->type);
+		}
+
+		#none of the types we added have metadata, so tack on any metadata for the existing columns if it exists
+		$output .= $this->encode_varint(strlen($map->raw_metadata)); #size of metadata section in bytes
+		$output .= $map->raw_metadata;
+	
+		#encode the nullability data	
+		$nullable = array(0,0,0,0); #none of the columns we added are nullable
+		foreach($map->columns as $col) {
+			$nullable[] = $col->nullable;
+		}	
+		$output .= $this->encode_bitmap($nullable);
+
+		return($output);
+	}
 	
 	function process_binlog($proc, $lastLine="") {
 		$binlogStatement="";
