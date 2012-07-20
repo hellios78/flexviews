@@ -46,11 +46,18 @@ class binlog_event_consumer {
 	private $data_type_map;
 	private $event_type_map;
 
-	private function set($key, $val) {
+	public $gsn;
+
+	public function set($key, $val) {
 		$this->$key = $val;
 	}
 
-	function __CONSTRUCT($data="") {
+	public function get($key) {
+		return $this->$key;
+	}
+
+	function __CONSTRUCT($data="", $gsn) {
+		$this->gsn = $gsn;
 		$this->data_type_map = array_flip($this->data_types);
 		$this->event_type_map = array_flip($this->event_types);
 		$this->consume($data);
@@ -219,10 +226,12 @@ class binlog_event_consumer {
 				break;
 	
 				case $m['newdecimal']:
-					$precision = $this->cast($this->read(1));	
-					$decimals = $this->cast($this->read(1));	
-					$this->table_map[$table_id]->raw_metadata .= $precision. $decimals;
-					$columns[$col]['metadata'] = (object)array('precision'=>$precision, 'decimals'=>$decimals);
+					$precision = $this->read(1);	
+					$scale = $this->read(1);	
+					$this->table_map[$table_id]->raw_metadata .= $precision. $scale;
+					$precision = $this->cast($precision);
+					$scale = $this->cast($scale);	
+					$columns[$col]['metadata'] = (object)array('precision'=>$precision, 'scale'=>$scale);
 				break;
 
 				case $m['blob']:
@@ -249,12 +258,14 @@ class binlog_event_consumer {
 						default:
 							
 							$data = $parser->read(1);
+							$this->table_map[$table_id]->raw_metadata .= $data;
 							$size = $this->cast($data);
 							$columns[$col]['metadata'] = (object)array('max_length' => $size);
 					}
 				break;
 			}	
 		}
+		echo "SAVED METADATA LEN: " . strlen($this->table_map[$table_id]->raw_metadata) . "\n";
 		
 		$this->table_map[$table_id]->raw_nullable = $this->read_bit_array($column_count,true);
 		$nullable = $this->unpack_bit_array($this->table_map[$table_id]->raw_nullable);
@@ -292,11 +303,11 @@ class binlog_event_consumer {
 			case 'insert':
 					echo "READING COLUMNS USED\n";
 					$columns_used = $this->read_bit_array($column_count, false);
+					++$this->gsn;
 					while($this->data){
 						echo "READING AN IMAGE\n";
-						++$this->gsn;
 						$data=$this->read_row_image($table_id, $columns_used);
-						$this->rows[$table_id][] = array('dml_mode' => 1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used, 'image'=>$data['image'], 'nulls' => $data['nulls']);
+						$this->rows[$table_id][] = (object)array('dml_mode' => 1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used, 'image'=>$data['image'], 'nulls' => $data['nulls']);
 					}
 			break;
 			
@@ -306,21 +317,21 @@ class binlog_event_consumer {
 					while($this->data) {	
 						++$this->gsn;
 						$data = $this->read_row_image($table_id, $columns_used['old']);
-						$this->rows[$table_id][] = array('dml_mode' => -1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used['old'], 'image'=>$data['image'], 'nulls' => $data['nulls']);
+						$this->rows[$table_id][] = (object)array('dml_mode' => -1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used['old'], 'image'=>$data['image'], 'nulls' => $data['nulls']);
 				
 						++$this->gsn;
 						$data = $this->read_row_image($table_id, $columns_used['new']);
-						$this->rows[$table_id][] = array('dml_mode' => 1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used['new'], 'image'=>$data['image'], 'nulls' => $data['nulls']);
+						$this->rows[$table_id][] = (object)array('dml_mode' => 1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used['new'], 'image'=>$data['image'], 'nulls' => $data['nulls']);
 					}
 				
 			break;
 			
 			case 'delete':
-					++$this->gsn;
 					$columns_used = $this->read_bit_array($column_count, false);
+					++$this->gsn;
 					while($this->data) {
 						$data = $this->read_row_image($table_id, $columns_used);
-						$this->rows[$table_id][] = array('dml_mode' => -1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used, 'image'=>$data['image'], 'nulls' => $data['nulls']);
+						$this->rows[$table_id][] = (object)array('dml_mode' => -1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used, 'image'=>$data['image'], 'nulls' => $data['nulls']);
 					}
 				
 			break;	
@@ -461,12 +472,38 @@ class binlog_event_consumer {
 		return str_split(strrev($output));
 	}
 
-	protected function read_newdecimal($i, $f) {
-		$i_bytes = floor($i / 9) * 4;
-		$i_bytes += $this->leftover_to_bytes($i % 9);
-		$f_bytes = floor($f / 9) * 4;
-		$f_bytes += $this->leftover_to_bytes($f % 9);
-		return($this->read($i_bytes + $f_bytes));
+	protected function read_newdecimal($precision, $scale) {
+		echo "READING NEWDEC P:$precision S:$scale\n";
+		$digits_per_integer = 9;
+      		$compressed_bytes = array(0, 1, 1, 2, 2, 3, 3, 4, 4, 4);
+      		$integral = ($precision - $scale);
+      		$uncomp_integral = floor($integral / $digits_per_integer);
+      		$uncomp_fractional = floor($scale / $digits_per_integer);
+      		$comp_integral = $integral - ($uncomp_integral * $digits_per_integer);
+      		$comp_fractional = $scale - ($uncomp_fractional * $digits_per_integer);
+      		$size = $compressed_bytes[$comp_integral];
+		$data = "";
+
+		if($size > 0) {
+			$data = $this->read($size);
+		}
+
+		for($i=0;$i<$uncomp_integral;++$i) {
+			$data .= $this->read(4);
+		}
+
+		for($i=0;$i<$uncomp_fractional;++$i) {
+			$data .= $this->read(4);
+		}
+
+		$size = $compressed_bytes[$comp_fractional];
+		if($size > 0) {
+			$data .= $this->read($size);
+		}
+
+		return $data;
+
+		
 	}
 
 	protected function leftover_to_bytes($digits) {
@@ -524,7 +561,7 @@ class binlog_event_consumer {
 			case $m['bit']:
 			return $this->read_bit_array($metadata->bits);
 			case $m['newdecimal']:
-			return $this->read_newdecimal($metadata->precision, $metadata->decimals);
+			return $this->read_newdecimal($metadata->precision, $metadata->scale);
 			default: die("DO NOT KNOW HOW TO READ TYPE: $data_type\n");
 		}
 

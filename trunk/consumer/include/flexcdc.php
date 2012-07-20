@@ -88,6 +88,8 @@ EOREGEX
 		return $tokens;	
 
 	}
+
+	protected $sent_fde = false;
   	
 	# Settings to enable bulk import
 	protected $inserts = array();
@@ -150,7 +152,7 @@ EOREGEX
 	#By default read settings from the INI file unless they are passed
 	#into the constructor	
 	public function __construct($settings = NULL, $no_connect = false) {
-		$this->binlog_parser = new binlog_event_consumer();
+		$this->binlog_parser = new binlog_event_consumer("",$this->gsn_hwm);
 		
 		if(!$settings) {
 			$settings = $this->read_settings();
@@ -218,7 +220,7 @@ EOREGEX
 
 		#get the source MySQL version so we can construct a format description event later
 		$sql = "SELECT version()";
-		$stmt = my_mysql_query($sql, $this->source) or die('Could not get source server version\n');
+		$stmt = my_mysql_query($sql, $this->source) or die1('Could not get source server version\n');
 		$row = mysql_fetch_array($stmt);
 		$this->serverVersion = $row[0];
 
@@ -338,9 +340,6 @@ EOREGEX
 	}
 	#Capture changes from the source into the dest
 	public function capture_changes($iterations=1) {
-				
-		$this->initialize();
-		
 		$count=0;
 		$sleep_time=0;
 		while($iterations <= 0 || ($iterations >0 && $count < $iterations)) {
@@ -379,7 +378,7 @@ EOREGEX
 				$this->logName = $row['master_log_file'];
 				$this->process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos'],$line);
 				echo "SHAAZAAM!\n";
-				exit;
+
 				$this->set_capture_pos();	
 				my_mysql_query('commit', $this->dest);
 				pclose($proc);
@@ -395,7 +394,7 @@ EOREGEX
 					$sleep_time += $this->settings['flexcdc']['sleep_increment'];
 					$sleep_time = $sleep_time > $this->settings['flexcdc']['sleep_maximum'] ? $this->settings['flexcdc']['sleep_maximum'] : $sleep_time;
 					#echo1('sleeping:' . $sleep_time . "\n");
-					sleep($sleep_time);
+					usleep($sleep_time * 1000000);
 				}
 			}
 
@@ -447,11 +446,14 @@ EOREGEX
 		$row = mysql_fetch_array($stmt);
 		$this->max_allowed_packet = $row[0];	
 
-		$stmt = my_mysql_query("select gsn_hwm from {$this->mvlogDB}.{$this->mview_uow} order by uow_id desc limit 1",$this->dest) 
-			or die('COULD NOT GET GSN_HWM:' . mysql_error($this->dest) . "\n");
+		$stmt = my_mysql_query("select uow_id, gsn_hwm from {$this->mvlogDB}.{$this->mview_uow} order by uow_id desc limit 1",$this->dest) 
+			or die1('COULD NOT GET GSN_HWM:' . mysql_error($this->dest) . "\n");
 
 		$row = mysql_fetch_array($stmt);
-		$this->gsn_hwm = $row[0];
+		$this->uow_id = $row[0];
+		$this->gsn_hwm = $row[1];
+
+		$this->binlog_parser->set('gsn', $this->gsn_hwm);
 
 		#echo1("Max_allowed_packet: " . $this->max_allowed_packet . "\n");
 		
@@ -555,22 +557,23 @@ EOREGEX
 	function start_transaction() {
 		my_mysql_query("START TRANSACTION", $this->dest) or die1("COULD NOT START TRANSACTION;\n" . mysql_error());
 
-        	$this->set_capture_pos();
+        	#$this->set_capture_pos();
 		$sql = sprintf("INSERT INTO `" . $this->mview_uow . "` values(NULL,str_to_date('%s', '%%y%%m%%d %%H:%%i:%%s'),%d);",rtrim($this->timeStamp),$this->gsn_hwm);
 		my_mysql_query($sql,$this->dest) or die1("COULD NOT CREATE NEW UNIT OF WORK:\n$sql\n" .  mysql_error());
 		 
-		$sql = "SET @fv_uow_id := LAST_INSERT_ID();";
-		my_mysql_query($sql, $this->dest) or die1("COULD NOT EXEC:\n$sql\n" . mysql_error($this->dest));
-
+		$sql = "SELECT LAST_INSERT_ID();";
+		$stmt = my_mysql_query($sql, $this->dest) or die1("COULD NOT EXEC:\n$sql\n" . mysql_error($this->dest));
+		$row = mysql_fetch_array($stmt);	
+		$this->uow_id = $row[0];
 	}
 
     
     /* Called when a transaction commits */
 	function commit_transaction() {
 		$this->set_capture_pos();
-		$sql = "UPDATE `{$this->mvlogDB}`.`{$this->mview_uow}` SET `commit_time`=str_to_date('%s','%%y%%m%%d %%H:%%i:%%s'), `gsn_hwm` = %d WHERE `uow_id` = @fv_uow_id";
-		$sql = sprintf($sql, rtrim($this->timeStamp),$this->gsn_hwm);
-		my_mysql_query($sql, $this->dest) or die('COULD NOT UPDATE ' . $this->mvlogDB . "." . $this->mview_uow . ':' . mysql_error($this->dest) . "\n");
+		$sql = "UPDATE `{$this->mvlogDB}`.`{$this->mview_uow}` SET `commit_time`=str_to_date('%s','%%y%%m%%d %%H:%%i:%%s'), `gsn_hwm` = %d WHERE `uow_id` = %d";
+		$sql = sprintf($sql, rtrim($this->timeStamp),$this->gsn_hwm,$this->uow_id);
+		my_mysql_query($sql, $this->dest) or die1('COULD NOT UPDATE ' . $this->mvlogDB . "." . $this->mview_uow . ':' . mysql_error($this->dest) . "\n");
 		my_mysql_query("COMMIT", $this->dest) or die1("COULD NOT COMMIT TRANSACTION;\n" . mysql_error());
 	}
 
@@ -635,14 +638,14 @@ EOREGEX
 			case 'ROLLBACK':
 				$this->binlog_parser->reset();
 				echo "DO ROLLBACK WORK!\n";
-				#$this->rollback_transaction();
+				$this->rollback_transaction();
 				break;
 				
 			case 'COMMIT':
 				echo "DO COMMIT WORK\n";
 				if(count($this->binlog_parser->rows > 0)) $this->process_rows();
 				$this->binlog_parser->reset();
-				#$this->commit_transaction(); /*FIXME*/
+				$this->commit_transaction(); 
 				break;
 				
 			#Might be interestested in CREATE statements at some point, but not right now.
@@ -865,46 +868,30 @@ EOREGEX
 	} 
 
 	function process_rows() {
-		print_r($this->mvlogList);
+		$this->gsn_hwm = $this->binlog_parser->get('gsn'); #the parser generated GSN values as it collected row changes
+		#$z = new binlog_event_consumer("", $this->gsn_hwm);
 
 		foreach($this->binlog_parser->table_map as $table_id => $info) {
-			print_r($info);
+			#FIXME: smartly (and transactionally) invalidate the cache
+			if($info->db === $this->mvlogDB && $info->table === $this->mvlogs) $this->refresh_mvlog_cache();
 			if(empty($this->mvlogList[$info->db . $info->table])) {
-				echo "Skipping table because it is not being logged\n";
 				continue;
 			} 
-/*
-(
-    [timestamp] => 1342572043
-    [event_type] => 23
-    [server_id] => 2
-    [event_length] => 42
-    [next_position] => 1439
-    [flags] => 0
-)
-*/
-			echo "WOULD PROCESS ROWS HERE\n";
-			$output = chunk_split(base64_encode($this->encode_fde()), 76, "\n");
-			echo "BINLOG '\n$output'/*!*/;\n";
+
+			if(!$this->sent_fde) {
+				$sql = "BINLOG '\n" . chunk_split(base64_encode($this->encode_fde()), 76, "\n") . "'/*!*/;\n";
+				my_mysql_query($sql, $this->dest) or die1("Could not execute statement:\n" . $sql);
+			}
 	
-			$body = $this->remap_table($table_id, $this->binlog_parser->table_map[$table_id]);
-			$h = $this->binlog_parser->header; #treat the last header we saw as a template
-			$output = $this->encode_int($h->timestamp, 32);
-			$output .= chr(19); #table map event
-			$output .= $this->encode_int($this->serverId,32);
-			$output .= $this->encode_int(19 + strlen($body),32);
-			$output .= $this->encode_int(0,32);
-			$output .= $this->encode_int($h->flags,16);
-			#echo "HEADER BYTE LEN: " . strlen($output) . "\n";
-			$output .= $body;  
+			$table_map = $this->encode_remap_table($table_id, $this->binlog_parser->table_map[$table_id]);
+			$table_map = chunk_split(base64_encode($table_map), 76, "\n");
 
-			$output = chunk_split(base64_encode($output), 76, "\n");
-			echo "BINLOG '\n$output'/*!*/;\n";
+			$table_map .= chunk_split(base64_encode($this->encode_row_events($table_id,
+				 $this->binlog_parser->table_map[$table_id])), 76, "\n");
 
-			#$z = new binlog_event_consumer();
-			#$z->consume($output);
+			$sql = "BINLOG '\n$table_map'/*!*/;\n";
+			my_mysql_query($sql, $this->dest) or die1("Could not execute statement:\n" . $sql);
 
-			exit;
 		}
 	}
 
@@ -916,6 +903,61 @@ EOREGEX
 		$output .= $this->encode_int(19 + strlen($this->binlog_parser->fde->encoded),32); #next offset
 		$output .= $this->encode_int(0,16);
 		return $output . $this->binlog_parser->fde->encoded;
+	}
+
+	protected function encode_row_events($table_id, $map) {
+		$output = $table_id;	
+		$output .= pack('S', 0); #flags
+		$output .= $this->encode_varint(count($map->columns) + 4); #column count (we add four columns)
+		$columns_used=array(1,1,1,1); # front-load the columns used list with the four new columns
+		foreach($this->binlog_parser->rows[$table_id][0]->columns_used as $bit) {
+			$columns_used[] = $bit;
+		}
+		$output .= $this->encode_bitmap($columns_used, count($map->columns) + 4); #columns used bitmap
+		
+		foreach($this->binlog_parser->rows[$table_id] as $row) {
+			#encode the NULL bitmap (front load our four columns as usual)
+			$nulls = array(0,0,0,0);
+			foreach($row->nulls as $bit) {
+				$nulls[] = $bit;
+			}
+			$output .= $this->encode_bitmap($nulls, count($map->columns) + 4);
+			
+			#encode the data for our four extra columns
+			$output .= pack('L', $row->dml_mode);
+			$output .= $this->encode_int($this->uow_id, 64);
+			$output .= pack('L', $this->serverId);
+			$output .= $this->encode_int($row->gsn, 64);
+	
+			#append the rest of the row data
+			$output .= $row->image;
+		}
+
+		#encode the header, knowing the body size
+		$h = $this->encode_int(time(), 32); #timestamp
+		$h .= chr(23); #FDE event type
+		$h .= $this->encode_int($this->binlog_parser->header->server_id,32); #server id
+		$h .= $this->encode_int(19 + strlen($output),32); #event size
+		$h .= $this->encode_int(19 + strlen($output)*2,32); #next offset
+		$h .= $this->encode_int(0,16); #flags
+
+		return $h . $output;
+	}
+	
+	protected function read_row_image($table_id, $columns_used) {
+		$row_data = "";
+
+		$columns_null = $this->read_bit_array(count($this->table_map[$table_id]->columns), false);
+
+		foreach($this->table_map[$table_id]->columns as $col => $col_info)	{
+			if(!$columns_used[$col]) {
+				continue;
+			} elseif ($columns_null[$col]) {
+				continue;
+			}
+			$row_data .= $this->read_mysql_type($col_info);
+		}
+		return array('nulls' => $columns_null, 'image' => $row_data);
 	}
 
 	protected function encode_lpstring($string, $with_null = true) {
@@ -944,8 +986,11 @@ EOREGEX
                 return $out;
         }
 
-        function encode_bitmap($bits) {
+        function encode_bitmap($bits, $max_bits=false) {
 		if(!is_string($bits)) $bits = join('',$bits);
+		if($max_bits !== false) {
+			$bits = substr($bits, 0, $max_bits);
+		}
 		$bits = strrev($bits);
 		
                 $bits = str_pad($bits, floor(strlen($bits) / 8) + ((strlen($bits) % 8) > 0 ? 1 : 0), '0', STR_PAD_LEFT);
@@ -958,7 +1003,7 @@ EOREGEX
 		return $out;
         }
 
-	function remap_table($table_id, $map) {
+	function encode_remap_table($table_id, $map) {
 		#encode the body header
 		$output = $table_id; # 6 bytes for table id
 		$output .= $map->raw_flags;
@@ -985,9 +1030,16 @@ EOREGEX
 		foreach($map->columns as $col) {
 			$nullable[] = $col->nullable;
 		}	
-		$output .= $this->encode_bitmap($nullable);
+		$output .= $this->encode_bitmap($nullable, count($map->columns) + 4);
 
-		return($output);
+		$h = $this->encode_int(time(), 32);
+		$h .= chr(19); #table map event
+		$h .= $this->encode_int($this->serverId,32);
+		$h .= $this->encode_int(19 + strlen($output),32);
+		$h .= $this->encode_int(0,32);
+		$h .= $this->encode_int(0,16);
+
+		return $h . $output;
 	}
 	
 	function process_binlog($proc, $lastLine="") {
