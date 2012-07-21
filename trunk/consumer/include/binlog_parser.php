@@ -1,4 +1,25 @@
 <?php
+/*  FlexCDC is part of Flexviews for MySQL
+    Copyright 2008-2010 Justin Swanhart
+
+    FlexViews is free software: you can redistribute it and/or modify
+    it under the terms of the Lesser GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    FlexViews is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with FlexViews in the file COPYING, and the Lesser extension to
+    the GPL (the LGPL) in COPYING.LESSER.
+    If not, see <http://www.gnu.org/licenses/>.
+
+    Portions of this code are strongly influenced by:
+    mysql_binlog (https://github.com/jeremycole/mysql_binlog)
+*/
 
 class binlog_event_consumer {
 	public $table_map = array();
@@ -92,18 +113,19 @@ class binlog_event_consumer {
 		if($this->raw_data === false || $this->raw_data === "") return false;
 		$header = substr($this->raw_data,0,28); # 28 = (19 * 4 / 3) + 3
 		#echo "HEADER: $header LEN: " . strlen($header) . "\n";
-		if(!$this->data .= base64_decode($header,true)) die('base64 decode failed for: ' . $header . "\n");
+		if(!$this->data .= base64_decode($header,true)) die1('base64 decode failed for: ' . $header . "\n");
 		#echo "DECODED LEN: " . strlen($this->data) . "\n";
 
 		$this->read_pos = 0;
 		$this->parse_event_header();
+		print_r($this->header);
 
 		$body_size = $this->header->event_length - 19;
 		$bytes_to_decode = floor($body_size * 4 / 3) + ( ($body_size * 4 % 3) != 0 ? 4 - ($body_size * 4 % 3) : 0 );
 		$body = substr($this->raw_data, 28, $bytes_to_decode);
 
 		#echo "EXPECT BODY SIZE(after decoding): $body_size, BODY SIZE(encoded): $bytes_to_decode, BYTES IN STREAM: " . strlen($body) . "\n";
-		if(!$this->data .= base64_decode($body,true)) die('base64 decode failed for: ' . $body . "\n");
+		if(!$this->data .= base64_decode($body,true)) die1('base64 decode failed for: ' . $body . "\n");
 		$this->raw_data = substr($this->raw_data, $bytes_to_decode + 28);
 
 		#echo "EXPECTED BODY SIZE: $body_size, GOT BODY SIZE: " . strlen($this->data) . "\n";
@@ -111,21 +133,19 @@ class binlog_event_consumer {
 		#echo "AT ACTUAL_READ_POS: {$this->read_pos} EXPECTED_READ_POS: {$this->header->event_length}\n";
 
 		if($this->read_pos < $this->header->event_length) {
-			#echo "AFTER EVENT PARSE REMAINING_DATA_LENGTH: " . strlen($this->data) . "\n";
-			#echo "EVENT UNDERREAD AT ACTUAL_READ_POS: {$this->read_pos} EXPECTED_READ_POS: {$this->header->event_length}\n";
+			$error = "AFTER EVENT PARSE REMAINING_DATA_LENGTH: " . strlen($this->data) . "\n" .
+			"EVENT UNDERREAD AT ACTUAL_READ_POS: {$this->read_pos} EXPECTED_READ_POS: {$this->header->event_length}\n";
 			foreach(str_split($this->data) as $key => $char) {
-				#echo "$key => " . ord($char);
-				#echo "\n";
+				$error .= "$key => " . ord($char) . "\n";
 			}
-
-			#print_r($this);
+			die1($error);
 			
-			exit;
+			
 		}
 		if($this->read_pos > $this->header->event_length) {
-			#echo "AFTER EVENT PARSE REMAINING_DATA_LENGTH: " . strlen($this->data) . "\n";
-			#echo "EVENT OVERREAD AT ACTUAL_READ_POS: {$this->read_pos} EXPECTED_READ_POS: {$this->header->event_length}\n";
-			exit;
+			$error = "AFTER EVENT PARSE REMAINING_DATA_LENGTH: " . strlen($this->data) . "\n";
+			$error .= "EVENT OVERREAD AT ACTUAL_READ_POS: {$this->read_pos} EXPECTED_READ_POS: {$this->header->event_length}\n";
+			die1($error);
 		}
 		return true;
 	}
@@ -156,7 +176,7 @@ class binlog_event_consumer {
 				$this->parse_row_event('update');
 				break;
 			case $this->event_types['DELETE_ROWS_EVENT']:
-				#echo "UPDATE_ROWS_EVENT\n";
+				#echo "DELETE_ROWS_EVENT\n";
 				$this->parse_row_event('delete');
 				break;
 			case $this->event_types['FORMAT_DESCRIPTION_EVENT']:
@@ -165,7 +185,7 @@ class binlog_event_consumer {
 				break;
 			default:
 				print_r($this->header);
-				die("UNKOWN EVENT TYPE!\n");
+				die1("UNKOWN EVENT TYPE!\n");
 		}
 	}
 
@@ -294,7 +314,7 @@ class binlog_event_consumer {
 		#echo "PARSING ROW EVENT\n";
 		$fields = array();
 		$table_id = $this->read(6);
-		if(empty($this->table_map[$table_id])) die('ROW IMAGE WITHOUT MAPPING TABLE MAP');
+		if(empty($this->table_map[$table_id])) die1('ROW IMAGE WITHOUT MAPPING TABLE MAP');
 		$flags = $this->read(2);
 		$column_count = $this->cast($this->read_varint(false));
 		$columns_used=array();
@@ -328,9 +348,12 @@ class binlog_event_consumer {
 			break;
 			
 			case 'delete':
+					#echo "READING COLUMNS USED\n";
 					$columns_used = $this->read_bit_array($column_count, false);
+					print_r($columns_used);
 					++$this->gsn;
 					while($this->data) {
+						#echo "READING AN IMAGE\n";
 						$data = $this->read_row_image($table_id, $columns_used);
 						$this->rows[$table_id][] = (object)array('dml_mode' => -1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used, 'image'=>$data['image'], 'nulls' => $data['nulls']);
 					}
@@ -342,8 +365,9 @@ class binlog_event_consumer {
 	
 	protected function read_row_image($table_id, $columns_used) {
 		$row_data = "";
-
+		#echo "READING NULL COLUMN MAP\n";
 		$columns_null = $this->read_bit_array(count($this->table_map[$table_id]->columns), false);
+		print_r($columns_null);
 
 		foreach($this->table_map[$table_id]->columns as $col => $col_info)	{
 			if(!$columns_used[$col]) {
@@ -394,7 +418,7 @@ class binlog_event_consumer {
 		return $return;
 	}
 
-	protected function read($bytes,$message="") {
+	protected function read($bytes,$message=":") {
 		$return = substr($this->data,0,$bytes);
 		if ($message) #echo "$message LEFT: " . strlen($this->data) . " REQD: $bytes, GOT: " . strlen($return) . "\n";
 		$this->read_pos += $bytes;
@@ -410,7 +434,7 @@ class binlog_event_consumer {
 		if($first_byte == 252) return ($keep_packed ? $data : '') . $this->read(2);
 		if($first_byte == 253) return ($keep_packed ? $data : '') . $this->read(3);
 		if($first_byte == 254) return ($keep_packed ? $data : '') . $this->read(8);
-		if($first_byte == 255) die('invalid varint length found!\n');
+		if($first_byte == 255) die1('invalid varint length found!\n');
 	}
 
 	protected function read_lpstring($size=1, $with_null = false) {
@@ -445,7 +469,7 @@ class binlog_event_consumer {
 			$char = $this->read(1);
 			if($char === chr(0)) break;
 			$return .= $char;
-			if($this->data === "") die("did not find end of string!\n");
+			if($this->data === "") die1("did not find end of string!\n");
 		}
 		if($keep_null) $return .= $char;
 		return $return;
@@ -467,10 +491,11 @@ class binlog_event_consumer {
 	public function unpack_bit_array($data) {
 		$output = "";	
 		$data = str_split($data);
-		foreach($data as $char) {
-			$output .= str_pad(decbin(ord($char)),8,'0',STR_PAD_LEFT);
+		foreach($data as $i => $char) {
+			$int = ord($char);
+			$output .= strrev(str_pad(decbin($int), 8, '0', STR_PAD_LEFT));
 		}
-		return str_split(strrev($output));
+		return str_split($output);
 	}
 
 	protected function read_newdecimal($precision, $scale) {
@@ -563,7 +588,7 @@ class binlog_event_consumer {
 			return $this->read_bit_array($metadata->bits);
 			case $m['newdecimal']:
 			return $this->read_newdecimal($metadata->precision, $metadata->scale);
-			default: die("DO NOT KNOW HOW TO READ TYPE: $data_type\n");
+			default: die1("DO NOT KNOW HOW TO READ TYPE: $data_type\n");
 		}
 
 		return false;
