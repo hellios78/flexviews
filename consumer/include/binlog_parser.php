@@ -118,7 +118,6 @@ class binlog_event_consumer {
 
 		$this->read_pos = 0;
 		$this->parse_event_header();
-		print_r($this->header);
 
 		$body_size = $this->header->event_length - 19;
 		$bytes_to_decode = floor($body_size * 4 / 3) + ( ($body_size * 4 % 3) != 0 ? 4 - ($body_size * 4 % 3) : 0 );
@@ -184,8 +183,7 @@ class binlog_event_consumer {
 				$this->parse_format_description_event();
 				break;
 			default:
-				print_r($this->header);
-				die1("UNKOWN EVENT TYPE!\n");
+				die1("UNKNOWN EVENT TYPE!\n" . print_r($this->header,true));
 		}
 	}
 
@@ -264,21 +262,23 @@ class binlog_event_consumer {
 
 				case $m['string']:
 				case $m['var_string']:
-					$real_type = $m[$this->cast($this->read(1))];
-					$this->table_map[$table_id]->raw_metadata .= $real_type;
+					$data = $this->read(1);
+					$real_type = $this->data_type_map[$this->cast($data)];
+					$real_type_int = $this->cast($data);
+					$this->table_map[$table_id]->raw_metadata .= $data;
 					switch($real_type) {
 						case 'enum':
 						case 'set':
-							$data = $parser->read(1);
+							$data = $this->read(1);
 							$size = $this->cast($data);
 							$this->table_map[$table_id]->raw_metadata .= $data;
 							$columns[$col]['metadata'] = (object)array('size' => $size);
-							$columns[$col]['type'] = $real_type;
+							$columns[$col]['type'] = $real_type_int;
 						break;
 
 						default:
 							
-							$data = $parser->read(1);
+							$data = $this->read(1);
 							$this->table_map[$table_id]->raw_metadata .= $data;
 							$size = $this->cast($data);
 							$columns[$col]['metadata'] = (object)array('max_length' => $size);
@@ -350,7 +350,6 @@ class binlog_event_consumer {
 			case 'delete':
 					#echo "READING COLUMNS USED\n";
 					$columns_used = $this->read_bit_array($column_count, false);
-					print_r($columns_used);
 					++$this->gsn;
 					while($this->data) {
 						#echo "READING AN IMAGE\n";
@@ -367,7 +366,6 @@ class binlog_event_consumer {
 		$row_data = "";
 		#echo "READING NULL COLUMN MAP\n";
 		$columns_null = $this->read_bit_array(count($this->table_map[$table_id]->columns), false);
-		print_r($columns_null);
 
 		foreach($this->table_map[$table_id]->columns as $col => $col_info)	{
 			if(!$columns_used[$col]) {
@@ -583,7 +581,7 @@ class binlog_event_consumer {
 			return $this->read(8);
 			case $m['enum']: 
 			case $m['set']:
-			return $this->read($metadata->size * 8);
+			return $this->read($metadata->size);
 			case $m['bit']:
 			return $this->read_bit_array($metadata->bits);
 			case $m['newdecimal']:

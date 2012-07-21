@@ -39,8 +39,7 @@ function die1($error = 1,$error2=1) {
 
 function echo1($message) {
 	global $ERROR_FILE;
-	fputs(isset($ERROR_FILE) && is_resource($ERROR_FILE) ? $ERROR_FILE : STDERR, $message);
-
+	fputs($ERROR_FILE, $message);
 }
 
 function my_mysql_query($a, $b=NULL, $debug=false) {
@@ -377,7 +376,7 @@ EOREGEX
 				$this->binlogPosition = $row['exec_master_log_pos'];
 				$this->logName = $row['master_log_file'];
 				$this->process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos'],$line);
-				echo "SHAAZAAM!\n";
+				#echo "SHAAZAAM!\n";
 
 				$this->set_capture_pos();	
 				my_mysql_query('commit', $this->dest);
@@ -610,8 +609,7 @@ EOREGEX
 		} else {
 			$command = str_replace($this->delimiter, '', $command);
 		}
-
-		switch(strtoupper($command)) {
+		switch(strtoupper(trim($command))) {
 			#register change in delimiter so that we properly capture statements
 			case 'DELIMITER':
 				$this->delimiter = $args;
@@ -626,6 +624,7 @@ EOREGEX
 				
 			#NEW TRANSACTION
 			case 'BEGIN':
+				#echo "STARTING NEW TRANSACTION!\n";
 				$this->start_transaction();
 				break;
 
@@ -637,12 +636,12 @@ EOREGEX
 			#END OF BINLOG, or binlog terminated early, or mysqlbinlog had an error
 			case 'ROLLBACK':
 				$this->binlog_parser->reset();
-				echo "DO ROLLBACK WORK!\n";
+				#echo "DO ROLLBACK WORK!\n";
 				$this->rollback_transaction();
 				break;
 				
 			case 'COMMIT':
-				echo "DO COMMIT WORK\n";
+				#echo "DO COMMIT WORK\n";
 				if(count($this->binlog_parser->rows > 0)) $this->process_rows();
 				$this->binlog_parser->reset();
 				$this->commit_transaction(); 
@@ -991,13 +990,12 @@ EOREGEX
 		if($max_bits !== false) {
 			$bits = substr($bits, 0, $max_bits);
 		}
-		$bits = strrev($bits);
 		
                 $bits = str_pad($bits, floor(strlen($bits) / 8) + ((strlen($bits) % 8) > 0 ? 1 : 0), '0', STR_PAD_LEFT);
                 $out = '';
 		
                 for ($i = 0, $len = strlen($bits); $i < $len; $i += 8) {
-                        $out .= chr(bindec(substr($bits, $i, 8)));
+                        $out .= chr(bindec(strrev(substr($bits, $i, 8))));
                 }
 
 		return $out;
@@ -1070,7 +1068,7 @@ EOREGEX
 					$this->timeStamp = $matches[1];
 					$this->binlogPosition = $matches[3];
 					$this->binlogServerId = $matches[2];
-					echo "HERE: {$this->binlogPosition}\n";
+					#echo "HERE: {$this->binlogPosition}\n";
 				}
 			} else {
 				#if($binlogStatement) {
