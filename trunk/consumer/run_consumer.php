@@ -59,7 +59,7 @@ if(!empty($params['ini'])) {
 }
 
 if(!empty($settings['flexcdc']['error_log'])) $ERROR_FILE=$settings['flexcdc']['error_log']; else $ERROR_FILE="flexcdc.err";		
-$ERROR_FILE = fopen($ERROR_FILE, 'w') or die1("could not open the error log for writing");
+$ERROR_FILE = fopen($ERROR_FILE, 'w+') or die("could not open the error log for writing");
 
 if(in_array('daemon', array_keys($params))) {
 	if (is_resource(STDERR)) fclose(STDERR);
