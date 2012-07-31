@@ -1,6 +1,5 @@
 <?php
-ini_set('output_buffering',false);
-if (is_resource(STDIN)) fclose(STDIN);
+gc_enable();
 require_once('include/flexcdc.php');
 require_once('Console/Getopt.php');
 declare(ticks = 1);
@@ -59,11 +58,9 @@ if(!empty($params['ini'])) {
 }
 
 if(!empty($settings['flexcdc']['error_log'])) $ERROR_FILE=$settings['flexcdc']['error_log']; else $ERROR_FILE="flexcdc.err";		
-$ERROR_FILE = fopen($ERROR_FILE, 'w+') or die("could not open the error log for writing");
+$ERROR_FILE = fopen($ERROR_FILE, 'a+') or die("could not open the error log for writing");
 
 if(in_array('daemon', array_keys($params))) {
-	if (is_resource(STDERR)) fclose(STDERR);
-	if (is_resource(STDOUT)) fclose(STDOUT);
 	$pid = pcntl_fork();
 	if($pid == -1) {
 		die('Could not fork a new process!\n');

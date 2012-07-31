@@ -25,6 +25,8 @@ class binlog_event_consumer {
 	public $table_map = array();
 	public $rows = array();
 	private $read_pos = 0;
+	private $sent_fde = false;
+	private $mvlogList = array();
 	
 	private $event_types = array(
 		'START_EVENT_V3'           => 1,
@@ -68,6 +70,9 @@ class binlog_event_consumer {
 	private $event_type_map;
 
 	public $gsn;
+	public $dest;
+	public $mvlogs;
+	public $mvlogDB;
 
 	public function set($key, $val) {
 		$this->$key = $val;
@@ -77,20 +82,23 @@ class binlog_event_consumer {
 		return $this->$key;
 	}
 
-	function __CONSTRUCT($data="", $gsn) {
+	function __CONSTRUCT(&$data="", $gsn=0) {
 		$this->gsn = $gsn;
 		$this->data_type_map = array_flip($this->data_types);
 		$this->event_type_map = array_flip($this->event_types);
 		$this->consume($data);
 	}
 	
-	function consume($data) {
+	function consume(&$data) {
 		if(!$data) return;
-
+		if(empty($this->mvlogList)) $this->refresh_mvlog_cache();
 		$events = explode("\n", $data);
+		unset($data);
 		
 		$save_data = "";
-		foreach($events as $event) {
+		for($i = 0, $cnt = count($events); $i < $cnt; ++$i) {
+			$event = $events[$i];
+			unset($events[$i]);
 			if(strlen($event) === 76 && substr($event, -1) !== '=') {
 				#echo "SAVING DATA: $event\n";
 				$save_data .= $event;
@@ -105,11 +113,16 @@ class binlog_event_consumer {
 			$this->raw_data = $event;
 			#echo "RAW EVENT: $event\n";
 			#echo "RAW LEN:" . strlen($event) . "\n";
+			unset($event);
 			while($this->next_event());
 		}
 	}
 	
 	protected function next_event() {
+		global $data_size;
+		$data_size=0;
+		#$m = memory_get_usage(true);
+		#echo "IN NEXT_EVENT: ALLOCATED MEMORY BEFORE BODY {bytes:$m mega:" . ($m / 1024 / 1024) . " giga:" . ($m / 1024 / 1024 / 1024) . "}\n";
 		if($this->raw_data === false || $this->raw_data === "") return false;
 		$header = substr($this->raw_data,0,28); # 28 = (19 * 4 / 3) + 3
 		#echo "HEADER: $header LEN: " . strlen($header) . "\n";
@@ -129,7 +142,13 @@ class binlog_event_consumer {
 
 		#echo "EXPECTED BODY SIZE: $body_size, GOT BODY SIZE: " . strlen($this->data) . "\n";
 		$this->parse_event_body();
+		$this->process_rows();
+
+		$rows = 0;
+
 		#echo "AT ACTUAL_READ_POS: {$this->read_pos} EXPECTED_READ_POS: {$this->header->event_length}\n";
+		#$m = memory_get_usage(true);
+		#echo "IN NEXT_EVENT: ALLOCATED MEMORY AFTER BODY {bytes:$m mega:" . ($m / 1024 / 1024) . " giga:" . ($m / 1024 / 1024 / 1024) . "}\n";
 
 		if($this->read_pos < $this->header->event_length) {
 			$error = "AFTER EVENT PARSE REMAINING_DATA_LENGTH: " . strlen($this->data) . "\n" .
@@ -146,10 +165,185 @@ class binlog_event_consumer {
 			$error .= "EVENT OVERREAD AT ACTUAL_READ_POS: {$this->read_pos} EXPECTED_READ_POS: {$this->header->event_length}\n";
 			die1($error);
 		}
+
 		return true;
 	}
+
+	protected function refresh_mvlog_cache() {
+		$this->mvlogList = array();
+			
+		$sql = "SELECT table_schema, table_name, mvlog_name from `{$this->mvlogDB}`.`$this->mvlogs` where active_flag=1";
+		$stmt = my_mysql_query($sql, $this->dest);
+		while($row = mysql_fetch_array($stmt)) {
+			$this->mvlogList[$row[0] . $row[1]] = $row[2];
+		}
+	}
+	
+	protected function process_rows() {
+		#echo "IN PROCESS ROWS\n";
+		#print_r($this);
+	
+		foreach($this->table_map as $table_id => $info) {
+			#FIXME: smartly (and transactionally) invalidate the cache
+			if($info->db === $this->mvlogDB && $info->table === $this->mvlogs) $this->refresh_mvlog_cache();
+			if(empty($this->mvlogList[$info->db . $info->table])) {
+				continue;
+			}
+	
+			if(!$this->sent_fde) {
+				$sql = "BINLOG '\n" . chunk_split(base64_encode($this->encode_fde()), 76, "\n") . "'/*!*/;\n";
+				my_mysql_query($sql, $this->dest) or die1("Could not execute statement:\n" . $sql);
+				unset($sql);
+			}
+	
+			$events = $this->encode_remap_table($table_id);
+			$events = chunk_split(base64_encode($events), 76, "\n");
+	
+			if(!empty($this->rows[$table_id]) && $this->rows[$table_id]['old']['images'] != "") {
+				$events .= chunk_split(base64_encode($this->encode_row_events($table_id,'old')), 76, "\n");
+			}
+	
+			if(!empty($this->rows[$table_id]) && $this->rows[$table_id]['new']['images'] != "") {
+				$events .= chunk_split(base64_encode($this->encode_row_events($table_id,'new')), 76, "\n");
+			}
+	
+			$sql = "BINLOG '\n$events'/*!*/;\n";
+			unset($events);
+
+			my_mysql_query($sql, $this->dest) or die1("Could not execute statement:\n" . $sql);
+			unset($sql);
+
+		}
+
+	}
+	
+	protected function encode_fde() {
+		$output = $this->encode_int(time(), 32);
+		$output .= chr(15); #FDE
+		$output .= $this->encode_int($this->header->server_id,32);
+		$output .= $this->encode_int(19 + strlen($this->fde->encoded),32); #event size
+		$output .= $this->encode_int(19 + strlen($this->fde->encoded),32); #next offset
+		$output .= $this->encode_int(0,16);
+		return $output . $this->fde->encoded;
+	}
+	
+	protected function encode_row_events(&$table_id, $mode) {
+		$map = $this->table_map[$table_id];
+		$output = $table_id;
+		$output .= pack('S', 0); #flags
+		$output .= $this->encode_varint(count($map->columns) + 4); #column count (we add four columns)
+		$columns_used=array(1,1,1,1); # front-load the columns used list with the four new columns
+		foreach($this->rows[$table_id][$mode]['columns_used'] as $bit) {
+			$columns_used[] = $bit;
+		}
+	
+		$output .= $this->encode_bitmap($columns_used, count($map->columns) + 4); #columns used bitmap
+		$output .= $this->rows[$table_id][$mode]['images'];
+		unset($this->rows[$table_id][$mode]['images']);
+	
+		#encode the header, knowing the body size
+		$h = $this->encode_int(time(), 32); #timestamp
+		$h .= chr(23); #FDE event type
+		$h .= $this->encode_int($this->header->server_id,32); #server id
+		$h .= $this->encode_int(19 + strlen($output),32); #event size
+		$h .= $this->encode_int(19 + strlen($output)*2,32); #next offset
+		$h .= $this->encode_int(0,16); #flags
+	
+		return $h . $output;
+	}
+	
+	protected function encode_lpstring($string, $with_null = true) {
+		$size_type = (strlen($string) < 256 ? 'C' : 'S');
+		$size_bytes = pack($size_type, strlen($string));
+		if($with_null) $string .= chr(0);
+		return $size_bytes . $string;
+	}
+	
+	protected function encode_varint($int) {
+		if($int === null) return chr(251);
+		if(($int >= -128 && $int <= 250)) return chr($int);
+		if(($int >= -32768 && $int <= 65535)) return(chr(252) . pack("S", $int));
+		if(($int >= -8388608 && $int <= 8388607)) return(chr(253) . $this->encode_int($int,24));
+		return(chr(254) . $this->encode_int($int,64));
+	}
+	
+	function encode_int($in, $pad_to_bits=64, $little_endian=true) {
+		$in = decbin($in);
+		$in = str_pad($in, $pad_to_bits, '0', STR_PAD_LEFT);
+		$out = '';
+		for ($i = 0, $len = strlen($in); $i < $len; $i += 8) {
+			$out .= chr(bindec(substr($in,$i,8)));
+		}
+		if($little_endian) $out = strrev($out);
+		return $out;
+	}
+	
+	function encode_bitmap($bits, $max_bits=false) {
+		if(!is_string($bits)) $bits = join('',$bits);
+		if($max_bits !== false) {
+			$bits = substr($bits, 0, $max_bits);
+		}
+	
+		$bits = str_pad($bits, floor(strlen($bits) / 8) + ((strlen($bits) % 8) > 0 ? 1 : 0), '0', STR_PAD_LEFT);
+		$out = '';
+	
+		for ($i = 0, $len = strlen($bits); $i < $len; $i += 8) {
+			$out .= chr(bindec(strrev(substr($bits, $i, 8))));
+		}
+	
+		return $out;
+	}
+	
+	function encode_remap_table($table_id) {
+		$map = $this->table_map[$table_id];
+
+		#encode the body header
+		$output = $table_id; # 6 bytes for table id
+		$output .= $map->raw_flags;
+	
+		#remap the table to the new table
+		$output .= $this->encode_lpstring($this->mvlogDB); #remap the DB into the new db
+		$output .= $this->encode_lpstring($this->mvlogList[$map->db . $map->table]); #remap to the new table
+	
+		#store the number of columns
+		$output .= $this->encode_varint(count($map->columns) + 4); #column count + 4 new columns (dml_type, uow_id, fv$server_id, fv$gsn)
+	
+		#output the byte array of data types
+		$output .= chr(3) . chr(8) . chr(3) . chr(8);  #data types for new columns (int=3, bigint=8)
+		foreach($map->columns as $col) {
+			$output .= chr($col->type);
+		}
+	
+		#none of the types we added have metadata, so tack on any metadata for the existing columns if it exists
+		$output .= $this->encode_varint(strlen($map->raw_metadata)); #size of metadata section in bytes
+		$output .= $map->raw_metadata;
+		
+		#encode the nullability data
+		$nullable = array(0,0,0,0); #none of the columns we added are nullable
+		foreach($map->columns as $col) {
+			$nullable[] = $col->nullable;
+		}
+		$output .= $this->encode_bitmap($nullable, count($map->columns) + 4);
+		
+		$h = $this->encode_int(time(), 32);
+		$h .= chr(19); #table map event
+		$h .= $this->encode_int($this->header->server_id,32);
+		$h .= $this->encode_int(19 + strlen($output),32);
+		$h .= $this->encode_int(0,32);
+		$h .= $this->encode_int(0,16);
+
+		unset($map);
+		
+		return $h . $output;
+	}
+	
 	
 	function reset() {
+		unset($this->rows);
+		unset($this->table_map);
+		unset($this->data);
+		unset($this->raw_data);
+
 		$this->table_map = array();
 		$this->rows = array();
 		$this->data = "";
@@ -312,73 +506,96 @@ class binlog_event_consumer {
 	
 	protected function parse_row_event($mode='insert') {
 		#echo "PARSING ROW EVENT\n";
-		$fields = array();
 		$table_id = $this->read(6);
 		if(empty($this->table_map[$table_id])) die1('ROW IMAGE WITHOUT MAPPING TABLE MAP');
+		$this->rows[$table_id]['new'] = array('images'=>"", 'columns_used' => array());
+		$this->rows[$table_id]['old'] = array('images'=>"", 'columns_used' => array());
 		$flags = $this->read(2);
 		$column_count = $this->cast($this->read_varint(false));
 		$columns_used=array();
 		if(empty($this->rows[$table_id])) $this->rows[$table_id] = array();
 
 		switch($mode) {
+
 			case 'insert':
 					#echo "READING COLUMNS USED\n";
-					$columns_used = $this->read_bit_array($column_count, false);
-					++$this->gsn;
+					$this->rows[$table_id]['new']['columns_used'] = $this->read_bit_array($column_count, false);
 					while($this->data){
+						#encode the data for our four extra columns
 						#echo "READING AN IMAGE\n";
-						$data=$this->read_row_image($table_id, $columns_used);
-						$this->rows[$table_id][] = (object)array('dml_mode' => 1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used, 'image'=>$data['image'], 'nulls' => $data['nulls']);
+						$this->rows[$table_id]['new']['images'] .= $this->read_row_image($table_id, 1);
 					}
 			break;
 			
 			case 'update':
-					$columns_used['old'] = $this->read_bit_array($column_count,false);
-					$columns_used['new'] = $this->read_bit_array($column_count,false);
+					$this->rows[$table_id]['old']['columns_used'] = $this->read_bit_array($column_count,false);
+					$this->rows[$table_id]['new']['columns_used'] = $this->read_bit_array($column_count,false);
 					while($this->data) {	
-						++$this->gsn;
-						$data = $this->read_row_image($table_id, $columns_used['old']);
-						$this->rows[$table_id][] = (object)array('dml_mode' => -1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used['old'], 'image'=>$data['image'], 'nulls' => $data['nulls']);
-				
-						++$this->gsn;
-						$data = $this->read_row_image($table_id, $columns_used['new']);
-						$this->rows[$table_id][] = (object)array('dml_mode' => 1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used['new'], 'image'=>$data['image'], 'nulls' => $data['nulls']);
+						$this->rows[$table_id]['old']['images'] .= $this->read_row_image($table_id, -1);
+						$this->rows[$table_id]['new']['images'] .= $this->read_row_image($table_id, 1);
 					}
-				
 			break;
 			
 			case 'delete':
 					#echo "READING COLUMNS USED\n";
-					$columns_used = $this->read_bit_array($column_count, false);
-					++$this->gsn;
+					$this->rows[$table_id]['old']['columns_used'] = $this->read_bit_array($column_count,false);
 					while($this->data) {
-						#echo "READING AN IMAGE\n";
-						$data = $this->read_row_image($table_id, $columns_used);
-						$this->rows[$table_id][] = (object)array('dml_mode' => -1, 'gsn'=>$this->gsn, 'columns_used'=>$columns_used, 'image'=>$data['image'], 'nulls' => $data['nulls']);
+						$this->rows[$table_id]['old']['images'] .= $this->read_row_image($table_id, -1);
 					}
-				
 			break;	
+
 		}
+
+		#global $data_size;
+		#if(!isset($data_size)) $data_size = 0;
+		#$data_size += strlen(serialize($this->rows[$table_id]));
+		#echo "FINISHED READING ROWS EVENT\n";
+		#echo "TOTAL IMAGE SIZE: " . $data_size . "\n";
+		#echo "TOTAL MEMORY SIZE: " . memory_get_usage() . "\n";
+		#echo "GARBAGE COLLECTION YIELDED: " . gc_collect_cycles();
+		#echo "NEW TOTAL MEMORY SIZE: " . memory_get_usage() . "\n\n";
 		
 	}
 	
-	protected function read_row_image($table_id, $columns_used) {
-		$row_data = "";
+	protected function read_row_image(&$table_id,$dml_mode) {
+		
+		static $encoded = false; #cached version of encoded representation of header data
+		static $last_uowid = false; #cache must be updated when the unit of work changes
+		$columns_used = $this->rows[$table_id][$dml_mode == -1 ? 'old' : 'new']['columns_used'];
+		if($last_uowid !== $this->uow_id) {
+			$last_uowid = $this->uow_id;
+			$encoded = $this->encode_int($this->uow_id, 64);
+			$encoded .= pack('L', $this->header->server_id);
+		}
+
+		$row_data = pack('l', $dml_mode);
+		$row_data .= $encoded;
+		$row_data .= $this->encode_int(++$this->gsn, 64); #INCREMENT THE GSN
+
 		#echo "READING NULL COLUMN MAP\n";
 		$columns_null = $this->read_bit_array(count($this->table_map[$table_id]->columns), false);
-
-		foreach($this->table_map[$table_id]->columns as $col => $col_info)	{
-			if(!$columns_used[$col]) {
+		
+		#echo "READING ROW IMAGE\n";
+		for($col=0, $cnt = count($this->table_map[$table_id]->columns); $col < $cnt; ++$col) { 
+			if($this->rows[$table_id][$dml_mode == -1 ? 'old' : 'new']['columns_used'][$col] == 0) {
 				continue;
-			} elseif ($columns_null[$col]) {
+			} elseif ($columns_null[$col] == 1) {
 				continue;
 			}
-			$row_data .= $this->read_mysql_type($col_info);
+			$row_data .= $this->read_mysql_type($this->table_map[$table_id]->columns[$col]);
 		}
-		return array('nulls' => $columns_null, 'image' => $row_data);
+
+		#append the information about our new four columns
+		$nulls = array(0,0,0,0);
+		foreach($columns_null as $bit) {
+			$nulls[] = $bit;
+		}
+		$columns_null = $this->encode_bitmap($nulls, count($this->table_map[$table_id]->columns) + 4);
+
+		return $columns_null . $row_data;
 	}
 	
-	protected function cast($data, $bits=false) {
+	protected function cast(&$data, $bits=false) {
 		if ($bits === false) $bits = strlen($data) * 8;
 		if($bits <= 0 ) return false;
 		switch($bits) {
@@ -416,9 +633,9 @@ class binlog_event_consumer {
 		return $return;
 	}
 
-	protected function read($bytes,$message=":") {
+	protected function read($bytes,$message="") {
 		$return = substr($this->data,0,$bytes);
-		if ($message) #echo "$message LEFT: " . strlen($this->data) . " REQD: $bytes, GOT: " . strlen($return) . "\n";
+		#if ($message) #echo "$message LEFT: " . strlen($this->data) . " REQD: $bytes, GOT: " . strlen($return) . "\n";
 		$this->read_pos += $bytes;
 		$this->data = substr($this->data, $bytes);
 		return $return;
@@ -438,9 +655,6 @@ class binlog_event_consumer {
 	protected function read_lpstring($size=1, $with_null = false) {
 		$data = $this->read($size);
 		$s = str_split($data);
-		foreach($s as $i => $c) {
-			#echo "$i => " . ord($c) . "\n";
-		}
 		$length = $this->cast($data);
 			
 		#echo "LEN READ FOR VARCHAR: $length\n";	
@@ -486,13 +700,15 @@ class binlog_event_consumer {
 		return $this->unpack_bit_array($data);
 	}
 
-	public function unpack_bit_array($data) {
+	public function unpack_bit_array(&$data) {
 		$output = "";	
 		$data = str_split($data);
 		foreach($data as $i => $char) {
 			$int = ord($char);
 			$output .= strrev(str_pad(decbin($int), 8, '0', STR_PAD_LEFT));
 		}
+		unset($i);
+		unset($char);
 		return str_split($output);
 	}
 
@@ -530,15 +746,7 @@ class binlog_event_consumer {
 		
 	}
 
-	protected function leftover_to_bytes($digits) {
-		if($digits === 0) return 0;
-		if($digits <= 2) return 1;
-		if($digits <= 4) return 2;
-		if($digits <= 6) return 3;
-		if($digits <= 9) return 4;
-	}
-
-	protected function read_mysql_type($col_info) {
+	protected function read_mysql_type(&$col_info) {
 		$data_type = $col_info->type;
 		$metadata = $col_info->metadata;
 		$m = &$this->data_types;

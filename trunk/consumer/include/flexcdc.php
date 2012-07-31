@@ -25,7 +25,7 @@ define('DEST', 'dest');
 require_once('binlog_parser.php');
 
 /* 
-The exit/die() functions normally exit with error code 0 when a string is passed in.
+The exit/die1() functions normally exit with error code 0 when a string is passed in.
 We want to exit with error code 1 when a string is passed in.
 */
 function die1($error = 1,$error2=1) {
@@ -39,6 +39,7 @@ function die1($error = 1,$error2=1) {
 
 function echo1($message) {
 	global $ERROR_FILE;
+	echo($message);
 	fputs($ERROR_FILE, $message);
 }
 
@@ -151,7 +152,8 @@ EOREGEX
 	#By default read settings from the INI file unless they are passed
 	#into the constructor	
 	public function __construct($settings = NULL, $no_connect = false) {
-		$this->binlog_parser = new binlog_event_consumer("",$this->gsn_hwm);
+		$data = "";
+		$this->binlog_parser = new binlog_event_consumer($data,0);
 		
 		if(!$settings) {
 			$settings = $this->read_settings();
@@ -368,14 +370,9 @@ EOREGEX
 					die1('Could not read binary log using mysqlbinlog\n');
 				}
 
-				$line = fgets($proc);
-				if(preg_match('%/mysqlbinlog:|^ERROR:%', $line)) {
-					die1('Could not read binary log: ' . $line . "\n");
-				}	
-
 				$this->binlogPosition = $row['exec_master_log_pos'];
 				$this->logName = $row['master_log_file'];
-				$this->process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos'],$line);
+				$this->process_binlog($proc, $row['master_log_file'], $row['exec_master_log_pos']);
 				#echo "SHAAZAAM!\n";
 
 				$this->set_capture_pos();	
@@ -420,16 +417,6 @@ EOREGEX
 	}
 
 	
-	protected function refresh_mvlog_cache() {
-		
-		$this->mvlogList = array();
-			
-		$sql = "SELECT table_schema, table_name, mvlog_name from `" . $this->mvlogs . "` where active_flag=1";
-		$stmt = my_mysql_query($sql, $this->dest);
-		while($row = mysql_fetch_array($stmt)) {
-			$this->mvlogList[$row[0] . $row[1]] = $row[2];
-		}
-	}
 	
 	/* Set up the destination connection */
 	function initialize_dest() {
@@ -452,7 +439,10 @@ EOREGEX
 		$this->uow_id = $row[0];
 		$this->gsn_hwm = $row[1];
 
-		$this->binlog_parser->set('gsn', $this->gsn_hwm);
+		$this->binlog_parser->gsn = $this->gsn_hwm;
+		$this->binlog_parser->mvlogs = $this->mvlogs;
+		$this->binlog_parser->mvlogDB = $this->mvlogDB;
+		$this->binlog_parser->dest = $this->dest;
 
 		#echo1("Max_allowed_packet: " . $this->max_allowed_packet . "\n");
 		
@@ -589,6 +579,8 @@ EOREGEX
 	 * one time per event.  If there is a SET INSERT_ID, SET TIMESTAMP, etc
 	 */	
 	function statement($sql) {
+		#$m = memory_get_usage(true);
+		#echo "IN STATEMENT: ALLOCATED MEMORY {bytes:$m mega:" . ($m / 1024 / 1024) . " giga:" . ($m / 1024 / 1024 / 1024) . "}\n";
 		if($sql[0] == '/') {
 			$end_comment = strpos($sql, ' ');
 			$sql = trim(substr($sql, $end_comment, strlen($sql) - $end_comment));
@@ -609,6 +601,7 @@ EOREGEX
 		} else {
 			$command = str_replace($this->delimiter, '', $command);
 		}
+
 		switch(strtoupper(trim($command))) {
 			#register change in delimiter so that we properly capture statements
 			case 'DELIMITER':
@@ -629,8 +622,22 @@ EOREGEX
 				break;
 
 			case 'BINLOG':
+				unset($sql);
 				$args = trim($args,"'\n");
+				#$m = memory_get_usage(true);
+				#echo "BEFORE BINLOG PARSE: ALLOCATED MEMORY {bytes:$m mega:" . ($m / 1024 / 1024) . " giga:" . ($m / 1024 / 1024 / 1024) . "}\n";
+				$this->binlog_parser->set('uow_id', $this->uow_id);
+				$this->binlog_parser->set('server_id', $this->serverId);
 				$this->binlog_parser->consume($args);
+				$this->gsn_hwm = $this->binlog_parser->get('gsn');
+
+				#$m = memory_get_usage(true);
+				#echo "AFTER CONSUME: ALLOCATED MEMORY {bytes:$m mega:" . ($m / 1024 / 1024) . " giga:" . ($m / 1024 / 1024 / 1024) . "}\n";
+				#$this->binlog_parser->reset();
+		
+				#$m = memory_get_usage(true);
+				#echo "AFTER RESET: ALLOCATED MEMORY {bytes:$m mega:" . ($m / 1024 / 1024) . " giga:" . ($m / 1024 / 1024 / 1024) . "}\n";
+
 				break;
 
 			#END OF BINLOG, or binlog terminated early, or mysqlbinlog had an error
@@ -641,9 +648,9 @@ EOREGEX
 				break;
 				
 			case 'COMMIT':
-				#echo "DO COMMIT WORK\n";
-				if(count($this->binlog_parser->rows > 0)) $this->process_rows();
+
 				$this->binlog_parser->reset();
+				#echo "DO COMMIT WORK\n";
 				$this->commit_transaction(); 
 				break;
 				
@@ -727,8 +734,6 @@ EOREGEX
 					my_mysql_query('commit', $this->dest);					
 				
 					$this->mvlogList = array();
-					$this->refresh_mvlog_cache();
-					
 					
 				}
 						
@@ -834,7 +839,6 @@ EOREGEX
 							
 							my_mysql_query($sql, $this->dest) or die1($sql . "\n" . mysql_error($this->dest) . "\n");
 							$this->mvlogList = array();
-							$this->refresh_mvlog_cache();
 						}
 					}
 				}	
@@ -866,192 +870,12 @@ EOREGEX
 		return false;
 	} 
 
-	function process_rows() {
-		$this->gsn_hwm = $this->binlog_parser->get('gsn'); #the parser generated GSN values as it collected row changes
-		#$z = new binlog_event_consumer("", $this->gsn_hwm);
-
-		foreach($this->binlog_parser->table_map as $table_id => $info) {
-			#FIXME: smartly (and transactionally) invalidate the cache
-			if($info->db === $this->mvlogDB && $info->table === $this->mvlogs) $this->refresh_mvlog_cache();
-			if(empty($this->mvlogList[$info->db . $info->table])) {
-				continue;
-			} 
-
-			if(!$this->sent_fde) {
-				$sql = "BINLOG '\n" . chunk_split(base64_encode($this->encode_fde()), 76, "\n") . "'/*!*/;\n";
-				my_mysql_query($sql, $this->dest) or die1("Could not execute statement:\n" . $sql);
-			}
-	
-			$table_map = $this->encode_remap_table($table_id, $this->binlog_parser->table_map[$table_id]);
-			$table_map = chunk_split(base64_encode($table_map), 76, "\n");
-
-			$table_map .= chunk_split(base64_encode($this->encode_row_events($table_id,
-				 $this->binlog_parser->table_map[$table_id])), 76, "\n");
-
-			$sql = "BINLOG '\n$table_map'/*!*/;\n";
-			my_mysql_query($sql, $this->dest) or die1("Could not execute statement:\n" . $sql);
-
-		}
-	}
-
-	protected function encode_fde() {
-		$output = $this->encode_int(time(), 32);
-		$output .= chr(15); #FDE
-		$output .= $this->encode_int($this->binlog_parser->header->server_id,32);
-		$output .= $this->encode_int(19 + strlen($this->binlog_parser->fde->encoded),32); #event size
-		$output .= $this->encode_int(19 + strlen($this->binlog_parser->fde->encoded),32); #next offset
-		$output .= $this->encode_int(0,16);
-		return $output . $this->binlog_parser->fde->encoded;
-	}
-
-	protected function encode_row_events($table_id, $map) {
-		$output = $table_id;	
-		$output .= pack('S', 0); #flags
-		$output .= $this->encode_varint(count($map->columns) + 4); #column count (we add four columns)
-		$columns_used=array(1,1,1,1); # front-load the columns used list with the four new columns
-		foreach($this->binlog_parser->rows[$table_id][0]->columns_used as $bit) {
-			$columns_used[] = $bit;
-		}
-		$output .= $this->encode_bitmap($columns_used, count($map->columns) + 4); #columns used bitmap
-		
-		foreach($this->binlog_parser->rows[$table_id] as $row) {
-			#encode the NULL bitmap (front load our four columns as usual)
-			$nulls = array(0,0,0,0);
-			foreach($row->nulls as $bit) {
-				$nulls[] = $bit;
-			}
-			$output .= $this->encode_bitmap($nulls, count($map->columns) + 4);
-			
-			#encode the data for our four extra columns
-			$output .= pack('L', $row->dml_mode);
-			$output .= $this->encode_int($this->uow_id, 64);
-			$output .= pack('L', $this->serverId);
-			$output .= $this->encode_int($row->gsn, 64);
-	
-			#append the rest of the row data
-			$output .= $row->image;
-		}
-
-		#encode the header, knowing the body size
-		$h = $this->encode_int(time(), 32); #timestamp
-		$h .= chr(23); #FDE event type
-		$h .= $this->encode_int($this->binlog_parser->header->server_id,32); #server id
-		$h .= $this->encode_int(19 + strlen($output),32); #event size
-		$h .= $this->encode_int(19 + strlen($output)*2,32); #next offset
-		$h .= $this->encode_int(0,16); #flags
-
-		return $h . $output;
-	}
-	
-	protected function read_row_image($table_id, $columns_used) {
-		$row_data = "";
-
-		$columns_null = $this->read_bit_array(count($this->table_map[$table_id]->columns), false);
-
-		foreach($this->table_map[$table_id]->columns as $col => $col_info)	{
-			if(!$columns_used[$col]) {
-				continue;
-			} elseif ($columns_null[$col]) {
-				continue;
-			}
-			$row_data .= $this->read_mysql_type($col_info);
-		}
-		return array('nulls' => $columns_null, 'image' => $row_data);
-	}
-
-	protected function encode_lpstring($string, $with_null = true) {
-		$size_type = (strlen($string) < 256 ? 'C' : 'S');
-		$size_bytes = pack($size_type, strlen($string));
-		if($with_null) $string .= chr(0);
-		return $size_bytes . $string;
-	}
-
-	protected function encode_varint($int) {
-		if($int === null) return chr(251);
-		if(($int >= -128 && $int <= 250)) return chr($int);
-		if(($int >= -32768 && $int <= 65535)) return(chr(252) . pack("S", $int));	
-		if(($int >= -8388608 && $int <= 8388607)) return(chr(253) . $this->encode_int($int,24));	
-		return(chr(254) . $this->encode_int($int,64));	
-	}
-
-        function encode_int($in, $pad_to_bits=64, $little_endian=true) {
-                $in = decbin($in);
-		$in = str_pad($in, $pad_to_bits, '0', STR_PAD_LEFT);
-                $out = '';
-                for ($i = 0, $len = strlen($in); $i < $len; $i += 8) {
-                        $out .= chr(bindec(substr($in,$i,8)));
-                }
-		if($little_endian) $out = strrev($out);
-                return $out;
-        }
-
-        function encode_bitmap($bits, $max_bits=false) {
-		if(!is_string($bits)) $bits = join('',$bits);
-		if($max_bits !== false) {
-			$bits = substr($bits, 0, $max_bits);
-		}
-		
-                $bits = str_pad($bits, floor(strlen($bits) / 8) + ((strlen($bits) % 8) > 0 ? 1 : 0), '0', STR_PAD_LEFT);
-                $out = '';
-		
-                for ($i = 0, $len = strlen($bits); $i < $len; $i += 8) {
-                        $out .= chr(bindec(strrev(substr($bits, $i, 8))));
-                }
-
-		return $out;
-        }
-
-	function encode_remap_table($table_id, $map) {
-		#encode the body header
-		$output = $table_id; # 6 bytes for table id
-		$output .= $map->raw_flags;
-
-		#remap the table to the new table
-		$output .= $this->encode_lpstring($this->mvlogDB); #remap the DB into the new db
-		$output .= $this->encode_lpstring($this->mvlogList[$map->db . $map->table]); #remap to the new table
-
-		#store the number of columns
-		$output .= $this->encode_varint(count($map->columns) + 4); #column count + 4 new columns (dml_type, uow_id, fv$server_id, fv$gsn)
-
-		#output the byte array of data types
-		$output .= chr(3) . chr(8) . chr(3) . chr(8);  #data types for new columns (int=3, bigint=8)
-		foreach($map->columns as $col) {
-			$output .= chr($col->type);
-		}
-
-		#none of the types we added have metadata, so tack on any metadata for the existing columns if it exists
-		$output .= $this->encode_varint(strlen($map->raw_metadata)); #size of metadata section in bytes
-		$output .= $map->raw_metadata;
-	
-		#encode the nullability data	
-		$nullable = array(0,0,0,0); #none of the columns we added are nullable
-		foreach($map->columns as $col) {
-			$nullable[] = $col->nullable;
-		}	
-		$output .= $this->encode_bitmap($nullable, count($map->columns) + 4);
-
-		$h = $this->encode_int(time(), 32);
-		$h .= chr(19); #table map event
-		$h .= $this->encode_int($this->serverId,32);
-		$h .= $this->encode_int(19 + strlen($output),32);
-		$h .= $this->encode_int(0,32);
-		$h .= $this->encode_int(0,16);
-
-		return $h . $output;
-	}
-	
 	function process_binlog($proc, $lastLine="") {
 		$binlogStatement="";
 		$this->timeStamp = false;
 
-		$this->refresh_mvlog_cache();
 		$sql = "";
-
-		while( !feof($proc) ) {
-			#read from the process
-			#$line = trim(fgets($proc));
-			$line = fgets($proc);
-
+		while($line = fgets($proc)) {
 			#It is faster to check substr of the line than to run regex
 			#on each line.
 			$prefix=substr($line, 0, 5);
@@ -1076,9 +900,9 @@ EOREGEX
 				#}
 				$binlogStatement .= $line;
 				$pos=false;				
-				if(($pos = strpos($binlogStatement, $this->delimiter)) !== false)  {
+				if($pos = strpos(substr(trim($line), -strlen($this->delimiter)), $this->delimiter) !== false)  {
 					#process statement
-					$this->statement(trim($binlogStatement));
+					$this->statement($binlogStatement);
 					$binlogStatement = "";
 				} 
 			}
