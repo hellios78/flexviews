@@ -1,3 +1,18 @@
+== 1.8.1 beta 2 ==
+Views with aggregate functions lacked unique keys on their GROUP BY attributes.  This resulted in wrong results during refresh.  This has been corrected.
+There is now a limit of 16 GROUP BY columns in a materialized view.  This is because MySQL will not allow more than 16 columns in an index.
+A future version of Flexviews may lift this limitation using a hash column.
+
+Views without aggregate tables now include a hash column.  This makes updating the views efficient without requiring the user explicitly create an 
+index over columns in the table to facilitate fast refresh.
+
+You need to disable all views without aggregate functions before upgrading and then re-enable them after upgrading.
+
+== 1.8.0 beta 1 ==
+The refresh algorithm for views without aggregate functions has been changed to take into account the order of changes in the database. 
+All table changelogs now include a fv$gsn column to support the improved refresh algorithm
+FlexCDC is improved to support all datatypes
+
 == 1.6.1 GA ==
 Whats new in Flexviews 1.6.1 GA
     * This is the first Flexviews GA release!
