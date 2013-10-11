@@ -15,8 +15,7 @@
   * transaction-isolation = READ-COMMITTED
   * sync_binlog=1
   * sync_frm=1
-  * innodb_safe_binlog=1
-
+  * innodb_support_xa=1
 == Transaction isolation level: READ-COMMITTED ==
 ----
   This transaction isolation level, when combined with row-based binary logging, will prevent locks from being held during INSERT .. SELECT statements which Flexviews uses.
